@@ -2,7 +2,6 @@
 
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -15,7 +14,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -125,14 +123,9 @@ function LoginForm() {
           </form>
         </Form>
       </CardContent>
-      <CardFooter className="flex flex-col space-y-2">
-        <div className="text-sm text-muted-foreground text-center">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="text-primary hover:underline">
-            Sign up
-          </Link>
-        </div>
-      </CardFooter>
+      <div className="pb-6 pt-2 text-center text-xs text-muted-foreground">
+        Contact administrator if you need an account
+      </div>
     </Card>
   );
 }

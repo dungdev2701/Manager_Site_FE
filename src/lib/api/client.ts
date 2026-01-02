@@ -46,6 +46,24 @@ apiClient.interceptors.request.use(
   }
 );
 
+// Helper to extract error message from API response
+const getErrorMessage = (error: AxiosError<ApiResponse>): string => {
+  // Try to get message from response body
+  const responseData = error.response?.data;
+  if (responseData) {
+    // Check if it's an error response
+    if (responseData.success === false && responseData.error?.message) {
+      return responseData.error.message;
+    }
+    // Check if there's a message in success response (shouldn't happen for errors, but just in case)
+    if (responseData.success === true && responseData.message) {
+      return responseData.message;
+    }
+  }
+  // Fallback to status text or generic message
+  return error.response?.statusText || error.message || 'An error occurred';
+};
+
 // Response interceptor - handle errors with auto refresh
 apiClient.interceptors.response.use(
   (response) => response,
@@ -54,11 +72,12 @@ apiClient.interceptors.response.use(
 
     // Handle 401 - Unauthorized
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // Skip refresh for login/register/refresh endpoints
+      // Skip refresh for login/register/refresh endpoints - throw error with proper message
       if (originalRequest.url?.includes('/auth/login') ||
           originalRequest.url?.includes('/auth/register') ||
           originalRequest.url?.includes('/auth/refresh')) {
-        return Promise.reject(error);
+        const message = getErrorMessage(error);
+        return Promise.reject(new Error(message));
       }
 
       if (isRefreshing) {
@@ -138,7 +157,9 @@ apiClient.interceptors.response.use(
       }
     }
 
-    return Promise.reject(error);
+    // For all other errors, extract proper error message
+    const message = getErrorMessage(error);
+    return Promise.reject(new Error(message));
   }
 );
 

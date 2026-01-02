@@ -36,9 +36,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { websiteApi } from '@/lib/api';
-import { Website, WebsiteStatus, WebsiteMetrics } from '@/types';
+import { Website, WebsiteStatus, WebsiteType, WebsiteMetrics } from '@/types';
 
 const editWebsiteSchema = z.object({
+  type: z.nativeEnum(WebsiteType),
   status: z.nativeEnum(WebsiteStatus),
   notes: z.string().max(5000).optional(),
   // Metrics fields - use string for form input, convert when submitting
@@ -76,13 +77,20 @@ const SOCIAL_OPTIONS = [
 ] as const;
 
 const STATUS_OPTIONS = [
-  { value: WebsiteStatus.UNTESTED, label: 'Untested' },
-  { value: WebsiteStatus.TESTED, label: 'Tested' },
-  { value: WebsiteStatus.RUNNING, label: 'Running' },
+  { value: WebsiteStatus.NEW, label: 'New' },
+  { value: WebsiteStatus.CHECKING, label: 'Checking' },
+  { value: WebsiteStatus.HANDING, label: 'Handing' },
   { value: WebsiteStatus.PENDING, label: 'Pending' },
-  { value: WebsiteStatus.MAINTENANCE, label: 'Maintenance' },
-  { value: WebsiteStatus.ABANDONED, label: 'Abandoned' },
+  { value: WebsiteStatus.RUNNING, label: 'Running' },
   { value: WebsiteStatus.ERROR, label: 'Error' },
+  { value: WebsiteStatus.MAINTENANCE, label: 'Maintenance' },
+];
+
+const TYPE_OPTIONS = [
+  { value: WebsiteType.ENTITY, label: 'Entity' },
+  { value: WebsiteType.BLOG2, label: 'Blog 2.0' },
+  { value: WebsiteType.PODCAST, label: 'Podcast' },
+  { value: WebsiteType.SOCIAL, label: 'Social' },
 ];
 
 export function EditWebsiteDialog({
@@ -96,7 +104,8 @@ export function EditWebsiteDialog({
   const form = useForm<EditWebsiteFormValues>({
     resolver: zodResolver(editWebsiteSchema),
     defaultValues: {
-      status: WebsiteStatus.UNTESTED,
+      type: WebsiteType.ENTITY,
+      status: WebsiteStatus.NEW,
       notes: '',
       social_connect: [],
     },
@@ -107,6 +116,7 @@ export function EditWebsiteDialog({
     if (website) {
       const metrics = website.metrics;
       form.reset({
+        type: website.type,
         status: website.status,
         notes: website.notes || '',
         traffic: metrics?.traffic?.toString() || '',
@@ -176,7 +186,7 @@ export function EditWebsiteDialog({
     if (data.email && data.email !== '') metrics.email = data.email as 'multi' | 'no_multi';
     if (data.required_gmail && data.required_gmail !== '') metrics.required_gmail = data.required_gmail as 'yes' | 'no';
     if (data.verify && data.verify !== '') metrics.verify = data.verify as 'yes' | 'no';
-    if (data.about && data.about !== '') metrics.about = data.about as 'no_stacking' | 'stacking_post' | 'stacking_about';
+    if (data.about && data.about !== '') metrics.about = data.about as 'no_stacking' | 'stacking_post' | 'stacking_about' | 'long_about';
     if (data.about_max_chars && data.about_max_chars !== '') {
       const maxCharsNum = parseInt(data.about_max_chars, 10);
       if (!isNaN(maxCharsNum) && maxCharsNum > 0) metrics.about_max_chars = maxCharsNum;
@@ -189,6 +199,7 @@ export function EditWebsiteDialog({
     updateMutation.mutate({
       id: website.id,
       payload: {
+        type: data.type,
         status: data.status,
         notes: data.notes,
         metrics: Object.keys(metrics).length > 0 ? metrics : undefined,
@@ -212,31 +223,58 @@ export function EditWebsiteDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Status */}
-            <FormField
-              control={form.control}
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Status *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select status..." />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {STATUS_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Type & Status */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Type *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select type..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select status..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {STATUS_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {/* Notes */}
             <FormField
@@ -564,6 +602,7 @@ export function EditWebsiteDialog({
                               <SelectItem value="no_stacking">No Stacking</SelectItem>
                               <SelectItem value="stacking_post">Stacking Post</SelectItem>
                               <SelectItem value="stacking_about">Stacking About</SelectItem>
+                              <SelectItem value="long_about">Long About</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />

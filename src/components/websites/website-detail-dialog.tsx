@@ -33,13 +33,23 @@ interface WebsiteDetailDialogProps {
 }
 
 const statusColors: Record<WebsiteStatus, string> = {
+  [WebsiteStatus.NEW]: 'bg-blue-100 text-blue-800',
+  [WebsiteStatus.CHECKING]: 'bg-yellow-100 text-yellow-800',
+  [WebsiteStatus.HANDING]: 'bg-orange-100 text-orange-800',
+  [WebsiteStatus.PENDING]: 'bg-purple-100 text-purple-800',
   [WebsiteStatus.RUNNING]: 'bg-green-100 text-green-800',
-  [WebsiteStatus.ABANDONED]: 'bg-gray-100 text-gray-800',
-  [WebsiteStatus.TESTED]: 'bg-blue-100 text-blue-800',
-  [WebsiteStatus.UNTESTED]: 'bg-yellow-100 text-yellow-800',
-  [WebsiteStatus.PENDING]: 'bg-orange-100 text-orange-800',
-  [WebsiteStatus.MAINTENANCE]: 'bg-purple-100 text-purple-800',
   [WebsiteStatus.ERROR]: 'bg-red-100 text-red-800',
+  [WebsiteStatus.MAINTENANCE]: 'bg-gray-100 text-gray-800',
+};
+
+const statusLabels: Record<WebsiteStatus, string> = {
+  [WebsiteStatus.NEW]: 'New',
+  [WebsiteStatus.CHECKING]: 'Checking',
+  [WebsiteStatus.HANDING]: 'Handing',
+  [WebsiteStatus.PENDING]: 'Pending',
+  [WebsiteStatus.RUNNING]: 'Running',
+  [WebsiteStatus.ERROR]: 'Error',
+  [WebsiteStatus.MAINTENANCE]: 'Maintenance',
 };
 
 function formatDate(date: string | null | undefined): string {
@@ -135,7 +145,7 @@ export function WebsiteDetailDialog({
                 label="Status"
                 value={
                   <Badge variant="secondary" className={statusColors[website.status]}>
-                    {website.status}
+                    {statusLabels[website.status]}
                   </Badge>
                 }
               />
@@ -293,11 +303,13 @@ export function WebsiteDetailDialog({
                     value={
                       metrics.about ? (
                         <Badge variant="outline" className={
-                          metrics.about !== 'no_stacking'
-                            ? 'bg-purple-50 text-purple-700 border-purple-200'
-                            : 'bg-gray-50 text-gray-600 border-gray-200'
+                          metrics.about === 'no_stacking'
+                            ? 'bg-gray-50 text-gray-600 border-gray-200'
+                            : metrics.about === 'long_about'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-purple-50 text-purple-700 border-purple-200'
                         }>
-                          {metrics.about === 'stacking_post' ? 'Stacking Post' : metrics.about === 'stacking_about' ? 'Stacking About' : 'No Stacking'}
+                          {metrics.about === 'stacking_post' ? 'Stacking Post' : metrics.about === 'stacking_about' ? 'Stacking About' : metrics.about === 'long_about' ? 'Long About' : 'No Stacking'}
                           {metrics.about_max_chars ? ` (${metrics.about_max_chars} chars)` : ''}
                         </Badge>
                       ) : '-'

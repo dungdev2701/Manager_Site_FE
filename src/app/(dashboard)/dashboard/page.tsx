@@ -85,8 +85,12 @@ export default function DashboardPage() {
     const total = websites.length;
     const running = websites.filter((w) => w.status === WebsiteStatus.RUNNING).length;
     const errors = websites.filter((w) => w.status === WebsiteStatus.ERROR).length;
+    // Pending: NEW, CHECKING, HANDING, PENDING (awaiting check or dev)
     const pending = websites.filter(
-      (w) => w.status === WebsiteStatus.PENDING || w.status === WebsiteStatus.UNTESTED
+      (w) => w.status === WebsiteStatus.PENDING ||
+             w.status === WebsiteStatus.NEW ||
+             w.status === WebsiteStatus.CHECKING ||
+             w.status === WebsiteStatus.HANDING
     ).length;
 
     return { total, running, errors, pending };

@@ -3,17 +3,25 @@ export enum Role {
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
   CHECKER = 'CHECKER',
+  CTV = 'CTV',
   VIEWER = 'VIEWER',
 }
 
 export enum WebsiteStatus {
-  RUNNING = 'RUNNING',
-  ABANDONED = 'ABANDONED',
-  TESTED = 'TESTED',
-  UNTESTED = 'UNTESTED',
-  PENDING = 'PENDING',
-  MAINTENANCE = 'MAINTENANCE',
-  ERROR = 'ERROR',
+  NEW = 'NEW',           // Mới thêm vào hệ thống
+  CHECKING = 'CHECKING', // Đang trong quá trình CTV check
+  HANDING = 'HANDING',   // Đội CTV test tay
+  PENDING = 'PENDING',   // Chờ dev phát triển trên tool
+  RUNNING = 'RUNNING',   // Đã sẵn sàng vào hệ thống
+  ERROR = 'ERROR',       // Lỗi
+  MAINTENANCE = 'MAINTENANCE', // Đang bảo trì
+}
+
+export enum WebsiteType {
+  ENTITY = 'ENTITY',
+  BLOG2 = 'BLOG2',
+  PODCAST = 'PODCAST',
+  SOCIAL = 'SOCIAL',
 }
 
 export enum PeriodType {
@@ -48,7 +56,7 @@ export interface WebsiteMetrics {
   // Index
   index?: 'yes' | 'no';
   // About
-  about?: 'no_stacking' | 'stacking_post' | 'stacking_about';
+  about?: 'no_stacking' | 'stacking_post' | 'stacking_about' | 'long_about';
   about_max_chars?: number; // Max characters allowed for about
   // Other fields
   username?: 'unique' | 'duplicate' | 'no'; // Unique: không trùng, Duplicate: được trùng, No: không có username
@@ -65,6 +73,7 @@ export interface WebsiteMetrics {
 export interface Website {
   id: string;
   domain: string;
+  type: WebsiteType;
   status: WebsiteStatus;
   notes?: string | null;
   metrics?: WebsiteMetrics | null;
@@ -197,6 +206,8 @@ export interface WebsiteFilters {
   // Sort options
   sortBy?: 'traffic' | 'DA' | 'createdAt' | 'status';
   sortOrder?: 'asc' | 'desc';
+  // Filter by type
+  type?: WebsiteType;
   // Filter by status
   status?: WebsiteStatus;
   // Filter by index
@@ -219,6 +230,7 @@ export interface WebsiteQuery extends PaginationQuery, SearchQuery, WebsiteFilte
 
 export interface CreateWebsiteRequest {
   domain: string;
+  type?: WebsiteType;
   status?: WebsiteStatus;
   notes?: string;
   priority?: number;
@@ -229,6 +241,7 @@ export interface CreateWebsiteRequest {
 
 export interface UpdateWebsiteRequest {
   domain?: string;
+  type?: WebsiteType;
   status?: WebsiteStatus;
   notes?: string;
   priority?: number;

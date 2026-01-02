@@ -38,10 +38,11 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { websiteApi, BulkWebsiteItem } from '@/lib/api';
-import { WebsiteMetrics, WebsiteStatus } from '@/types';
+import { WebsiteMetrics, WebsiteStatus, WebsiteType } from '@/types';
 
 const singleWebsiteSchema = z.object({
   domain: z.string().min(1, 'Domain is required'),
+  type: z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL']).optional(),
   notes: z.string().max(5000).optional(),
   // Metrics fields - use string for form input, convert when submitting
   traffic: z.string().optional(),
@@ -54,7 +55,7 @@ const singleWebsiteSchema = z.object({
   email: z.enum(['multi', 'no_multi']).optional(),
   required_gmail: z.enum(['yes', 'no']).optional(),
   verify: z.enum(['yes', 'no']).optional(),
-  about: z.enum(['no_stacking', 'stacking_post', 'stacking_about']).optional(),
+  about: z.enum(['no_stacking', 'stacking_post', 'stacking_about', 'long_about']).optional(),
   about_max_chars: z.string().optional(), // Max characters allowed for about
   text_link: z.enum(['no', 'href', 'markdown', 'BBCode']).optional(),
   social_connect: z.array(z.enum(['facebook', 'twitter', 'youtube', 'linkedin'])).optional(),
@@ -348,7 +349,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
               metrics.verify = 'no';
             }
 
-            // About (No Stacking, Stacking About, Stacking Post)
+            // About (No Stacking, Stacking About, Stacking Post, Long About)
             const aboutVal = String(row['About'] || row['about'] || '').toLowerCase().trim();
             if (aboutVal === 'no stacking' || aboutVal === 'no_stacking' || aboutVal === 'nostacking') {
               metrics.about = 'no_stacking';
@@ -356,6 +357,8 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
               metrics.about = 'stacking_about';
             } else if (aboutVal === 'stacking post' || aboutVal === 'stacking_post' || aboutVal === 'stackingpost') {
               metrics.about = 'stacking_post';
+            } else if (aboutVal === 'long about' || aboutVal === 'long_about' || aboutVal === 'longabout') {
+              metrics.about = 'long_about';
             }
 
             // Text Link (No, Hrefs, Markdown, BBCode)
@@ -402,7 +405,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
             // Status
             const statusVal = String(row['Status'] || row['status'] || '').toUpperCase().trim();
             let status: WebsiteStatus | undefined;
-            if (['RUNNING', 'ABANDONED', 'TESTED', 'UNTESTED', 'PENDING', 'MAINTENANCE', 'ERROR'].includes(statusVal)) {
+            if (['NEW', 'CHECKING', 'HANDING', 'PENDING', 'RUNNING', 'ERROR', 'MAINTENANCE'].includes(statusVal)) {
               status = statusVal as WebsiteStatus;
             }
 
@@ -602,6 +605,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
 
     createSingleMutation.mutate({
       domain: data.domain,
+      type: data.type as WebsiteType | undefined,
       notes: data.notes,
       metrics: Object.keys(metrics).length > 0 ? metrics : undefined,
     });
@@ -669,6 +673,30 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
                       <FormControl>
                         <Input placeholder="example.com or https://example.com" {...field} />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={singleForm.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select type..." />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ENTITY">Entity</SelectItem>
+                          <SelectItem value="BLOG2">Blog 2.0</SelectItem>
+                          <SelectItem value="PODCAST">Podcast</SelectItem>
+                          <SelectItem value="SOCIAL">Social</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -999,6 +1027,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
                                   <SelectItem value="no_stacking">No Stacking</SelectItem>
                                   <SelectItem value="stacking_post">Stacking Post</SelectItem>
                                   <SelectItem value="stacking_about">Stacking About</SelectItem>
+                                  <SelectItem value="long_about">Long About</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage />

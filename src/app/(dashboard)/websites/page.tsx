@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { format } from 'date-fns';
 import {
   Plus,
   Search,
@@ -12,7 +13,6 @@ import {
   Trash2,
   Edit,
   Eye,
-  Info,
   ShieldCheck,
   ShieldAlert,
   ChevronLeft,
@@ -23,6 +23,7 @@ import {
   ArrowUp,
   X,
   Download,
+  Settings2,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -62,16 +63,40 @@ import { AddWebsiteDialog } from '@/components/websites/add-website-dialog';
 import { WebsiteDetailDialog } from '@/components/websites/website-detail-dialog';
 import { EditWebsiteDialog } from '@/components/websites/edit-website-dialog';
 import { websiteApi } from '@/lib/api';
-import { Website, WebsiteStatus, WebsiteMetrics, WebsiteFilters } from '@/types';
+import { Website, WebsiteStatus, WebsiteType, WebsiteMetrics, WebsiteFilters } from '@/types';
 
 const statusColors: Record<WebsiteStatus, string> = {
+  [WebsiteStatus.NEW]: 'bg-blue-100 text-blue-800',
+  [WebsiteStatus.CHECKING]: 'bg-yellow-100 text-yellow-800',
+  [WebsiteStatus.HANDING]: 'bg-orange-100 text-orange-800',
+  [WebsiteStatus.PENDING]: 'bg-purple-100 text-purple-800',
   [WebsiteStatus.RUNNING]: 'bg-green-100 text-green-800',
-  [WebsiteStatus.ABANDONED]: 'bg-gray-100 text-gray-800',
-  [WebsiteStatus.TESTED]: 'bg-blue-100 text-blue-800',
-  [WebsiteStatus.UNTESTED]: 'bg-yellow-100 text-yellow-800',
-  [WebsiteStatus.PENDING]: 'bg-orange-100 text-orange-800',
-  [WebsiteStatus.MAINTENANCE]: 'bg-purple-100 text-purple-800',
   [WebsiteStatus.ERROR]: 'bg-red-100 text-red-800',
+  [WebsiteStatus.MAINTENANCE]: 'bg-gray-100 text-gray-800',
+};
+
+const statusLabels: Record<WebsiteStatus, string> = {
+  [WebsiteStatus.NEW]: 'New',
+  [WebsiteStatus.CHECKING]: 'Checking',
+  [WebsiteStatus.HANDING]: 'Handing',
+  [WebsiteStatus.PENDING]: 'Pending',
+  [WebsiteStatus.RUNNING]: 'Running',
+  [WebsiteStatus.ERROR]: 'Error',
+  [WebsiteStatus.MAINTENANCE]: 'Maintenance',
+};
+
+const typeColors: Record<WebsiteType, string> = {
+  [WebsiteType.ENTITY]: 'bg-blue-100 text-blue-800',
+  [WebsiteType.BLOG2]: 'bg-purple-100 text-purple-800',
+  [WebsiteType.PODCAST]: 'bg-pink-100 text-pink-800',
+  [WebsiteType.SOCIAL]: 'bg-cyan-100 text-cyan-800',
+};
+
+const typeLabels: Record<WebsiteType, string> = {
+  [WebsiteType.ENTITY]: 'Entity',
+  [WebsiteType.BLOG2]: 'Blog 2.0',
+  [WebsiteType.PODCAST]: 'Podcast',
+  [WebsiteType.SOCIAL]: 'Social',
 };
 
 function formatTraffic(traffic?: number): string {
@@ -85,7 +110,8 @@ function formatSuccessRate(rate?: number | null, totalAttempts?: number): { text
   if (rate === null || rate === undefined || !totalAttempts) {
     return { text: '-', color: '' };
   }
-  const percentage = Math.round(rate * 100);
+  // rate đã là percentage (0-100) từ backend
+  const percentage = Math.round(rate);
   let color = 'text-red-600';
   if (percentage >= 80) {
     color = 'text-green-600';
@@ -93,51 +119,6 @@ function formatSuccessRate(rate?: number | null, totalAttempts?: number): { text
     color = 'text-yellow-600';
   }
   return { text: `${percentage}%`, color };
-}
-
-function MetricsDetailsTooltip({ metrics }: { metrics: WebsiteMetrics }) {
-  const aboutValue = metrics.about
-    ? metrics.about_max_chars
-      ? `${metrics.about} (${metrics.about_max_chars} chars)`
-      : metrics.about
-    : undefined;
-
-  const details = [
-    { label: 'Email', value: metrics.email },
-    { label: 'Required Gmail', value: metrics.required_gmail },
-    { label: 'Verify', value: metrics.verify },
-    { label: 'About', value: aboutValue },
-    { label: 'Text Link', value: metrics.text_link },
-    {
-      label: 'Social',
-      value: metrics.social_connect?.join(', ') || undefined,
-    },
-    { label: 'Avatar', value: metrics.avatar },
-    { label: 'Cover', value: metrics.cover },
-  ].filter((d) => d.value);
-
-  if (details.length === 0) return null;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-6 w-6">
-          <Info className="h-4 w-4 text-muted-foreground" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="left" className="max-w-xs">
-        <div className="space-y-1">
-          <p className="font-semibold text-xs mb-2">Details</p>
-          {details.map((detail) => (
-            <div key={detail.label} className="flex justify-between gap-4 text-xs">
-              <span className="text-muted-foreground">{detail.label}:</span>
-              <span className="font-medium">{detail.value}</span>
-            </div>
-          ))}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
 }
 
 function CaptchaBadge({ metrics }: { metrics: WebsiteMetrics }) {
@@ -207,7 +188,114 @@ function IndexBadge({ index }: { index?: 'yes' | 'no' }) {
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 
-const defaultFilters: WebsiteFilters = {};
+const defaultFilters: WebsiteFilters = {
+  sortBy: 'traffic',
+  sortOrder: 'desc',
+};
+
+// Column definitions
+type ColumnId =
+  | 'domain'
+  | 'type'
+  | 'status'
+  | 'traffic'
+  | 'DA'
+  | 'index'
+  | 'captcha'
+  | 'captchaProvider'
+  | 'username'
+  | 'email'
+  | 'requiredGmail'
+  | 'verify'
+  | 'about'
+  | 'textLink'
+  | 'socialConnect'
+  | 'avatar'
+  | 'cover'
+  | 'creator'
+  | 'checker'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'lastTestedAt'
+  | 'lastUsedAt'
+  | 'notes'
+  | 'priority'
+  | 'category'
+  | 'tags'
+  | 'successRate';
+
+interface ColumnDef {
+  id: ColumnId;
+  label: string;
+  group: 'basic' | 'metrics' | 'additional' | 'dates';
+  width?: string;
+  align?: 'left' | 'center' | 'right';
+}
+
+const ALL_COLUMNS: ColumnDef[] = [
+  // Basic Information
+  { id: 'domain', label: 'Domain', group: 'basic', width: 'w-[180px]', align: 'left' },
+  { id: 'type', label: 'Type', group: 'basic', width: 'w-[100px]', align: 'center' },
+  { id: 'status', label: 'Status', group: 'basic', width: 'w-[120px]', align: 'center' },
+  { id: 'priority', label: 'Priority', group: 'basic', width: 'w-[80px]', align: 'center' },
+  { id: 'category', label: 'Category', group: 'basic', width: 'w-[120px]', align: 'center' },
+  { id: 'tags', label: 'Tags', group: 'basic', width: 'w-[150px]', align: 'center' },
+  { id: 'notes', label: 'Notes', group: 'basic', width: 'w-[200px]', align: 'left' },
+
+  // Metrics
+  { id: 'traffic', label: 'Traffic', group: 'metrics', width: 'w-[100px]', align: 'center' },
+  { id: 'DA', label: 'DA', group: 'metrics', width: 'w-[80px]', align: 'center' },
+  { id: 'index', label: 'Index', group: 'metrics', width: 'w-[80px]', align: 'center' },
+  { id: 'captcha', label: 'Captcha', group: 'metrics', width: 'w-[120px]', align: 'center' },
+  { id: 'captchaProvider', label: 'Captcha Provider', group: 'metrics', width: 'w-[140px]', align: 'center' },
+  { id: 'username', label: 'Username', group: 'metrics', width: 'w-[100px]', align: 'center' },
+  { id: 'email', label: 'Email', group: 'metrics', width: 'w-[100px]', align: 'center' },
+  { id: 'requiredGmail', label: 'Required Gmail', group: 'metrics', width: 'w-[120px]', align: 'center' },
+  { id: 'verify', label: 'Verify', group: 'metrics', width: 'w-[80px]', align: 'center' },
+  { id: 'about', label: 'About', group: 'metrics', width: 'w-[150px]', align: 'center' },
+  { id: 'textLink', label: 'Text Link', group: 'metrics', width: 'w-[100px]', align: 'center' },
+  { id: 'socialConnect', label: 'Social Connect', group: 'metrics', width: 'w-[150px]', align: 'center' },
+  { id: 'avatar', label: 'Avatar', group: 'metrics', width: 'w-[80px]', align: 'center' },
+  { id: 'cover', label: 'Cover', group: 'metrics', width: 'w-[80px]', align: 'center' },
+
+  // Additional
+  { id: 'creator', label: 'Creator', group: 'additional', width: 'w-[120px]', align: 'center' },
+  { id: 'checker', label: 'Checker', group: 'additional', width: 'w-[120px]', align: 'center' },
+  { id: 'successRate', label: 'Success Rate', group: 'additional', width: 'w-[100px]', align: 'center' },
+
+  // Dates
+  { id: 'createdAt', label: 'Created At', group: 'dates', width: 'w-[150px]', align: 'center' },
+  { id: 'updatedAt', label: 'Updated At', group: 'dates', width: 'w-[150px]', align: 'center' },
+  { id: 'lastTestedAt', label: 'Last Tested', group: 'dates', width: 'w-[150px]', align: 'center' },
+  { id: 'lastUsedAt', label: 'Last Used', group: 'dates', width: 'w-[150px]', align: 'center' },
+];
+
+const DEFAULT_VISIBLE_COLUMNS: ColumnId[] = [
+  'domain',
+  'type',
+  'status',
+  'traffic',
+  'DA',
+  'index',
+  'captcha',
+  'creator',
+  'checker',
+  'successRate',
+];
+
+const COLUMN_GROUPS = [
+  { id: 'basic', label: 'Basic Information' },
+  { id: 'metrics', label: 'Metrics' },
+  { id: 'additional', label: 'Additional' },
+  { id: 'dates', label: 'Dates' },
+] as const;
+
+const STORAGE_KEY = 'websites-visible-columns';
+
+function formatDate(date: string | null | undefined): string {
+  if (!date) return '-';
+  return format(new Date(date), 'dd/MM/yyyy HH:mm');
+}
 
 export default function WebsitesPage() {
   const [search, setSearch] = useState('');
@@ -223,7 +311,326 @@ export default function WebsitesPage() {
   const [isSelectAllPages, setIsSelectAllPages] = useState(false); // Select all across all pages
   const [isLoadingSelectAll, setIsLoadingSelectAll] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(DEFAULT_VISIBLE_COLUMNS);
+  const [isColumnSelectorOpen, setIsColumnSelectorOpen] = useState(false);
   const queryClient = useQueryClient();
+
+  // Load visible columns from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as ColumnId[];
+        // Validate that all saved columns still exist
+        const validColumns = parsed.filter((id) => ALL_COLUMNS.some((col) => col.id === id));
+        if (validColumns.length > 0) {
+          setVisibleColumns(validColumns);
+        }
+      } catch {
+        // Invalid JSON, use defaults
+      }
+    }
+  }, []);
+
+  // Save visible columns to localStorage
+  const saveVisibleColumns = useCallback((columns: ColumnId[]) => {
+    setVisibleColumns(columns);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(columns));
+  }, []);
+
+  const toggleColumn = useCallback((columnId: ColumnId) => {
+    setVisibleColumns((prev) => {
+      const newColumns = prev.includes(columnId)
+        ? prev.filter((id) => id !== columnId)
+        : [...prev, columnId];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newColumns));
+      return newColumns;
+    });
+  }, []);
+
+  const resetColumns = useCallback(() => {
+    saveVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+  }, [saveVisibleColumns]);
+
+  // Get visible column definitions in order
+  const visibleColumnDefs = useMemo(() => {
+    return ALL_COLUMNS.filter((col) => visibleColumns.includes(col.id));
+  }, [visibleColumns]);
+
+  // Render cell content based on column id
+  const renderCellContent = useCallback((columnId: ColumnId, website: Website) => {
+    const metrics = website.metrics;
+
+    switch (columnId) {
+      case 'domain':
+        return <span className="font-medium">{website.domain}</span>;
+
+      case 'type':
+        return (
+          <Badge variant="secondary" className={typeColors[website.type]}>
+            {typeLabels[website.type]}
+          </Badge>
+        );
+
+      case 'status':
+        return (
+          <Badge variant="secondary" className={statusColors[website.status]}>
+            {statusLabels[website.status]}
+          </Badge>
+        );
+
+      case 'traffic':
+        return <span className="font-medium">{formatTraffic(metrics?.traffic)}</span>;
+
+      case 'DA':
+        return (
+          <span
+            className={`font-medium ${
+              metrics?.DA
+                ? metrics.DA >= 30
+                  ? 'text-green-600'
+                  : metrics.DA >= 15
+                    ? 'text-yellow-600'
+                    : 'text-red-600'
+                : ''
+            }`}
+          >
+            {metrics?.DA ?? '-'}
+          </span>
+        );
+
+      case 'index':
+        return <IndexBadge index={metrics?.index} />;
+
+      case 'captcha':
+        return metrics ? (
+          <CaptchaBadge metrics={metrics} />
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        );
+
+      case 'captchaProvider':
+        if (!metrics?.captcha_type) return <span className="text-muted-foreground">-</span>;
+        if (metrics.captcha_type === 'captcha') {
+          return (
+            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+              {metrics.captcha_provider === 'recaptcha' ? 'reCaptcha' : metrics.captcha_provider === 'hcaptcha' ? 'hCaptcha' : '-'}
+            </Badge>
+          );
+        }
+        return (
+          <Badge variant="outline" className={metrics.cloudflare ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-gray-50 text-gray-600 border-gray-200'}>
+            {metrics.cloudflare ? 'Cloudflare' : 'None'}
+          </Badge>
+        );
+
+      case 'username':
+        if (!metrics?.username) return <span className="text-muted-foreground">-</span>;
+        return (
+          <Badge
+            variant="outline"
+            className={
+              metrics.username === 'unique'
+                ? 'bg-green-50 text-green-700 border-green-200'
+                : metrics.username === 'duplicate'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                  : 'bg-gray-50 text-gray-600 border-gray-200'
+            }
+          >
+            {metrics.username === 'unique' ? 'Unique' : metrics.username === 'duplicate' ? 'Duplicate' : 'No'}
+          </Badge>
+        );
+
+      case 'email':
+        if (!metrics?.email) return <span className="text-muted-foreground">-</span>;
+        return (
+          <Badge
+            variant="outline"
+            className={metrics.email === 'multi' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+          >
+            {metrics.email === 'multi' ? 'Multi' : 'No Multi'}
+          </Badge>
+        );
+
+      case 'requiredGmail':
+        if (!metrics?.required_gmail) return <span className="text-muted-foreground">-</span>;
+        return (
+          <Badge
+            variant="outline"
+            className={metrics.required_gmail === 'yes' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'}
+          >
+            {metrics.required_gmail === 'yes' ? 'Required' : 'Not Required'}
+          </Badge>
+        );
+
+      case 'verify':
+        if (!metrics?.verify) return <span className="text-muted-foreground">-</span>;
+        return (
+          <Badge
+            variant="outline"
+            className={metrics.verify === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+          >
+            {metrics.verify === 'yes' ? 'Yes' : 'No'}
+          </Badge>
+        );
+
+      case 'about':
+        if (!metrics?.about) return <span className="text-muted-foreground">-</span>;
+        const aboutLabel = metrics.about === 'stacking_post' ? 'Stack Post'
+          : metrics.about === 'stacking_about' ? 'Stack About'
+          : metrics.about === 'long_about' ? 'Long About'
+          : 'No Stack';
+        const aboutColor = metrics.about === 'no_stacking'
+          ? 'bg-gray-50 text-gray-600 border-gray-200'
+          : metrics.about === 'long_about'
+            ? 'bg-blue-50 text-blue-700 border-blue-200'
+            : 'bg-purple-50 text-purple-700 border-purple-200';
+        return (
+          <Badge variant="outline" className={aboutColor}>
+            {aboutLabel}
+            {metrics.about_max_chars ? ` (${metrics.about_max_chars})` : ''}
+          </Badge>
+        );
+
+      case 'textLink':
+        if (!metrics?.text_link) return <span className="text-muted-foreground">-</span>;
+        return (
+          <Badge variant="outline">
+            {metrics.text_link === 'no' ? 'No' : metrics.text_link === 'href' ? 'Href' : metrics.text_link === 'markdown' ? 'Markdown' : 'BBCode'}
+          </Badge>
+        );
+
+      case 'socialConnect':
+        if (!metrics?.social_connect || metrics.social_connect.length === 0) {
+          return <span className="text-muted-foreground">-</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1 justify-center">
+            {metrics.social_connect.map((social) => (
+              <Badge key={social} variant="outline" className="text-xs capitalize">
+                {social}
+              </Badge>
+            ))}
+          </div>
+        );
+
+      case 'avatar':
+        if (!metrics?.avatar) return <span className="text-muted-foreground">-</span>;
+        return (
+          <Badge
+            variant="outline"
+            className={metrics.avatar === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+          >
+            {metrics.avatar === 'yes' ? 'Yes' : 'No'}
+          </Badge>
+        );
+
+      case 'cover':
+        if (!metrics?.cover) return <span className="text-muted-foreground">-</span>;
+        return (
+          <Badge
+            variant="outline"
+            className={metrics.cover === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+          >
+            {metrics.cover === 'yes' ? 'Yes' : 'No'}
+          </Badge>
+        );
+
+      case 'creator':
+        return website.creator ? (
+          <span className="text-sm">{website.creator.name || website.creator.email}</span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        );
+
+      case 'checker':
+        return website.checker ? (
+          <span className="text-sm">{website.checker.name}</span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        );
+
+      case 'successRate': {
+        const { text, color } = formatSuccessRate(website.successRate, website.totalAttempts);
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className={`font-medium cursor-default ${color}`}>{text}</span>
+            </TooltipTrigger>
+            {website.totalAttempts ? (
+              <TooltipContent>
+                <p>{website.totalAttempts} attempts</p>
+              </TooltipContent>
+            ) : null}
+          </Tooltip>
+        );
+      }
+
+      case 'createdAt':
+        return <span className="text-sm">{formatDate(website.createdAt)}</span>;
+
+      case 'updatedAt':
+        return <span className="text-sm">{formatDate(website.updatedAt)}</span>;
+
+      case 'lastTestedAt':
+        return <span className="text-sm">{formatDate(website.lastTestedAt)}</span>;
+
+      case 'lastUsedAt':
+        return <span className="text-sm">{formatDate(website.lastUsedAt)}</span>;
+
+      case 'notes':
+        if (!website.notes) return <span className="text-muted-foreground">-</span>;
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-sm truncate max-w-[180px] block cursor-default">{website.notes}</span>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-xs">
+              <p className="whitespace-pre-wrap">{website.notes}</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+
+      case 'priority':
+        return <span className="text-sm">{website.priority ?? '-'}</span>;
+
+      case 'category':
+        return website.category ? (
+          <Badge variant="outline">{website.category}</Badge>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        );
+
+      case 'tags':
+        if (!website.tags || website.tags.length === 0) {
+          return <span className="text-muted-foreground">-</span>;
+        }
+        return (
+          <div className="flex flex-wrap gap-1 justify-center">
+            {website.tags.slice(0, 2).map((tag) => (
+              <Badge key={tag} variant="secondary" className="text-xs">
+                {tag}
+              </Badge>
+            ))}
+            {website.tags.length > 2 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="secondary" className="text-xs cursor-default">
+                    +{website.tags.length - 2}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{website.tags.slice(2).join(', ')}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        );
+
+      default:
+        return <span className="text-muted-foreground">-</span>;
+    }
+  }, []);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
@@ -404,6 +811,7 @@ export default function WebsitesPage() {
 
     return {
       domain: website.domain,
+      Type: typeLabels[website.type] || website.type,
       index: metrics.index === 'yes' ? 'Yes' : metrics.index === 'no' ? 'No' : '',
       traffic: metrics.traffic ? formatTraffic(metrics.traffic) : '',
       DA: metrics.DA ?? '',
@@ -433,6 +841,7 @@ export default function WebsitesPage() {
     // Auto-size columns
     const colWidths = [
       { wch: 30 }, // domain
+      { wch: 10 }, // Type
       { wch: 8 },  // index
       { wch: 10 }, // traffic
       { wch: 5 },  // DA
@@ -495,8 +904,8 @@ export default function WebsitesPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Websites</h1>
           <p className="text-muted-foreground">Manage and monitor your websites</p>
@@ -519,7 +928,7 @@ export default function WebsitesPage() {
         onOpenChange={setIsEditDialogOpen}
       />
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 mb-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -549,6 +958,62 @@ export default function WebsitesPage() {
             </Button>
           </div>
         )}
+
+        {/* Column Selector */}
+        <Popover open={isColumnSelectorOpen} onOpenChange={setIsColumnSelectorOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="icon" className="relative">
+              <Settings2 className="h-4 w-4" />
+              {visibleColumns.length !== DEFAULT_VISIBLE_COLUMNS.length && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                  {visibleColumns.length}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80" align="end">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">Columns</h4>
+                <Button variant="ghost" size="sm" onClick={resetColumns} className="h-auto p-1 text-xs">
+                  Reset
+                </Button>
+              </div>
+              <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                {COLUMN_GROUPS.map((group) => {
+                  const groupColumns = ALL_COLUMNS.filter((col) => col.group === group.id);
+                  return (
+                    <div key={group.id} className="space-y-2">
+                      <h5 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {group.label}
+                      </h5>
+                      <div className="grid grid-cols-2 gap-2">
+                        {groupColumns.map((col) => (
+                          <label
+                            key={col.id}
+                            className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1"
+                          >
+                            <Checkbox
+                              checked={visibleColumns.includes(col.id)}
+                              onCheckedChange={() => toggleColumn(col.id)}
+                              disabled={col.id === 'domain'} // Domain is always required
+                            />
+                            <span className={col.id === 'domain' ? 'text-muted-foreground' : ''}>
+                              {col.label}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-xs text-muted-foreground border-t pt-2">
+                {visibleColumns.length} of {ALL_COLUMNS.length} columns visible
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
           <PopoverTrigger asChild>
@@ -615,6 +1080,25 @@ export default function WebsitesPage() {
                 </div>
               </div>
 
+              {/* Type filter */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Type</Label>
+                <Select
+                  value={filters.type || ''}
+                  onValueChange={(value) => updateFilter('type', value as WebsiteFilters['type'] || undefined)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={WebsiteType.ENTITY}>Entity</SelectItem>
+                    <SelectItem value={WebsiteType.BLOG2}>Blog 2.0</SelectItem>
+                    <SelectItem value={WebsiteType.PODCAST}>Podcast</SelectItem>
+                    <SelectItem value={WebsiteType.SOCIAL}>Social</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Status filter */}
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Status</Label>
@@ -626,13 +1110,13 @@ export default function WebsitesPage() {
                     <SelectValue placeholder="All" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={WebsiteStatus.RUNNING}>Running</SelectItem>
-                    <SelectItem value={WebsiteStatus.TESTED}>Tested</SelectItem>
-                    <SelectItem value={WebsiteStatus.UNTESTED}>Untested</SelectItem>
+                    <SelectItem value={WebsiteStatus.NEW}>New</SelectItem>
+                    <SelectItem value={WebsiteStatus.CHECKING}>Checking</SelectItem>
+                    <SelectItem value={WebsiteStatus.HANDING}>Handing</SelectItem>
                     <SelectItem value={WebsiteStatus.PENDING}>Pending</SelectItem>
-                    <SelectItem value={WebsiteStatus.MAINTENANCE}>Maintenance</SelectItem>
-                    <SelectItem value={WebsiteStatus.ABANDONED}>Abandoned</SelectItem>
+                    <SelectItem value={WebsiteStatus.RUNNING}>Running</SelectItem>
                     <SelectItem value={WebsiteStatus.ERROR}>Error</SelectItem>
+                    <SelectItem value={WebsiteStatus.MAINTENANCE}>Maintenance</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -760,9 +1244,9 @@ export default function WebsitesPage() {
         </div>
       )}
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
+      <div className="rounded-md border overflow-auto max-h-[calc(100vh-320px)] scrollbar-thin">
+        <Table containerClassName="">
+          <TableHeader className="sticky top-0 bg-background z-10 shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
             <TableRow>
               <TableHead className="w-[50px]">
                 <Checkbox
@@ -772,15 +1256,14 @@ export default function WebsitesPage() {
                   className={someSelected && !allPageSelected ? 'opacity-50' : ''}
                 />
               </TableHead>
-              <TableHead className="min-w-[200px]">Domain</TableHead>
-              <TableHead className="text-center w-[200px]">Status</TableHead>
-              <TableHead className="text-center w-[160px]">Traffic</TableHead>
-              <TableHead className="text-center w-[160px]">DA</TableHead>
-              <TableHead className="text-center w-[120px]">Index</TableHead>
-              <TableHead className="text-center w-[160px]">Captcha</TableHead>
-              <TableHead className="text-center w-[160px]">Details</TableHead>
-              <TableHead className="text-center w-[160px]">Checker</TableHead>
-              <TableHead className="text-center w-[120px]">Success</TableHead>
+              {visibleColumnDefs.map((col) => (
+                <TableHead
+                  key={col.id}
+                  className={`${col.width || ''} ${col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : ''}`}
+                >
+                  {col.label}
+                </TableHead>
+              ))}
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -791,33 +1274,11 @@ export default function WebsitesPage() {
                   <TableCell>
                     <Skeleton className="h-4 w-4" />
                   </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-48" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-6 w-16 mx-auto" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-12 mx-auto" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-8 mx-auto" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-6 w-10 mx-auto" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-6 w-16 mx-auto" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-6 w-6 mx-auto" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-16 mx-auto" />
-                  </TableCell>
-                  <TableCell>
-                    <Skeleton className="h-4 w-10 mx-auto" />
-                  </TableCell>
+                  {visibleColumnDefs.map((col) => (
+                    <TableCell key={col.id}>
+                      <Skeleton className="h-6 w-16 mx-auto" />
+                    </TableCell>
+                  ))}
                   <TableCell>
                     <Skeleton className="h-8 w-8" />
                   </TableCell>
@@ -825,14 +1286,14 @@ export default function WebsitesPage() {
               ))}
             {!isLoading && error && (
               <TableRow>
-                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={visibleColumnDefs.length + 2} className="text-center text-muted-foreground py-8">
                   Failed to load websites. Please try again.
                 </TableCell>
               </TableRow>
             )}
             {!isLoading && !error && data?.websites.length === 0 && (
               <TableRow>
-                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={visibleColumnDefs.length + 2} className="text-center text-muted-foreground py-8">
                   No websites found. Add your first website to get started.
                 </TableCell>
               </TableRow>
@@ -848,72 +1309,14 @@ export default function WebsitesPage() {
                       aria-label={`Select ${website.domain}`}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{website.domain}</TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="secondary" className={statusColors[website.status]}>
-                      {website.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span className="font-medium">
-                      {formatTraffic(website.metrics?.traffic)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <span
-                      className={`font-medium ${website.metrics?.DA
-                        ? website.metrics.DA >= 30
-                          ? 'text-green-600'
-                          : website.metrics.DA >= 15
-                            ? 'text-yellow-600'
-                            : 'text-red-600'
-                        : ''
-                        }`}
+                  {visibleColumnDefs.map((col) => (
+                    <TableCell
+                      key={col.id}
+                      className={col.align === 'center' ? 'text-center' : col.align === 'right' ? 'text-right' : ''}
                     >
-                      {website.metrics?.DA ?? '-'}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <IndexBadge index={website.metrics?.index} />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {website.metrics ? (
-                      <CaptchaBadge metrics={website.metrics} />
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {website.metrics ? (
-                      <MetricsDetailsTooltip metrics={website.metrics} />
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {website.checker ? (
-                      <span className="text-sm">{website.checker.name}</span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {(() => {
-                      const { text, color } = formatSuccessRate(website.successRate, website.totalAttempts);
-                      return (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className={`font-medium cursor-default ${color}`}>{text}</span>
-                          </TooltipTrigger>
-                          {website.totalAttempts ? (
-                            <TooltipContent>
-                              <p>{website.totalAttempts} attempts</p>
-                            </TooltipContent>
-                          ) : null}
-                        </Tooltip>
-                      );
-                    })()}
-                  </TableCell>
+                      {renderCellContent(col.id, website)}
+                    </TableCell>
+                  ))}
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -947,7 +1350,7 @@ export default function WebsitesPage() {
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mt-4 flex-shrink-0">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>Showing</span>
           <Select

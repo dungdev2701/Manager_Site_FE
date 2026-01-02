@@ -8,10 +8,12 @@ import {
   PaginationMeta,
   WebsiteMetrics,
   WebsiteStatus,
+  WebsiteType,
 } from '@/types';
 
 export interface BulkWebsiteItem {
   domain: string;
+  type?: WebsiteType;
   metrics?: WebsiteMetrics;
   status?: WebsiteStatus;
 }
