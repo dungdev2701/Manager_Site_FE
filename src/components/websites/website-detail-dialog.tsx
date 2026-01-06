@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { STATUS_BADGE_CLASSES, STATUS_LABELS } from '@/lib/constants';
 import { Website, WebsiteStatus } from '@/types';
 
 interface WebsiteDetailDialogProps {
@@ -31,26 +32,6 @@ interface WebsiteDetailDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-const statusColors: Record<WebsiteStatus, string> = {
-  [WebsiteStatus.NEW]: 'bg-blue-100 text-blue-800',
-  [WebsiteStatus.CHECKING]: 'bg-yellow-100 text-yellow-800',
-  [WebsiteStatus.HANDING]: 'bg-orange-100 text-orange-800',
-  [WebsiteStatus.PENDING]: 'bg-purple-100 text-purple-800',
-  [WebsiteStatus.RUNNING]: 'bg-green-100 text-green-800',
-  [WebsiteStatus.ERROR]: 'bg-red-100 text-red-800',
-  [WebsiteStatus.MAINTENANCE]: 'bg-gray-100 text-gray-800',
-};
-
-const statusLabels: Record<WebsiteStatus, string> = {
-  [WebsiteStatus.NEW]: 'New',
-  [WebsiteStatus.CHECKING]: 'Checking',
-  [WebsiteStatus.HANDING]: 'Handing',
-  [WebsiteStatus.PENDING]: 'Pending',
-  [WebsiteStatus.RUNNING]: 'Running',
-  [WebsiteStatus.ERROR]: 'Error',
-  [WebsiteStatus.MAINTENANCE]: 'Maintenance',
-};
 
 function formatDate(date: string | null | undefined): string {
   if (!date) return '-';
@@ -111,7 +92,7 @@ export function WebsiteDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto scrollbar-thin">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
@@ -144,8 +125,8 @@ export function WebsiteDetailDialog({
                 icon={Activity}
                 label="Status"
                 value={
-                  <Badge variant="secondary" className={statusColors[website.status]}>
-                    {statusLabels[website.status]}
+                  <Badge variant="secondary" className={STATUS_BADGE_CLASSES[website.status]}>
+                    {STATUS_LABELS[website.status]}
                   </Badge>
                 }
               />

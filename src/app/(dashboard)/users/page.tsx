@@ -59,17 +59,17 @@ import { ResetPasswordDialog } from '@/components/users/reset-password-dialog';
 const roleColors: Record<Role, string> = {
   [Role.ADMIN]: 'bg-red-100 text-red-800',
   [Role.MANAGER]: 'bg-blue-100 text-blue-800',
-  [Role.CHECKER]: 'bg-green-100 text-green-800',
+  [Role.DEV]: 'bg-cyan-100 text-cyan-800',
   [Role.CTV]: 'bg-purple-100 text-purple-800',
-  [Role.VIEWER]: 'bg-gray-100 text-gray-800',
+  [Role.CHECKER]: 'bg-green-100 text-green-800',
 };
 
 const roleLabels: Record<Role, string> = {
   [Role.ADMIN]: 'Admin',
   [Role.MANAGER]: 'Manager',
-  [Role.CHECKER]: 'Checker',
+  [Role.DEV]: 'Dev',
   [Role.CTV]: 'CTV',
-  [Role.VIEWER]: 'Viewer',
+  [Role.CHECKER]: 'Checker',
 };
 
 export default function UsersPage() {
@@ -171,7 +171,7 @@ export default function UsersPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-4">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
+        <div className="relative flex-1 min-w-[200px] max-w-md bg-background">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search by name or email..."
@@ -190,16 +190,16 @@ export default function UsersPage() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="w-[150px] bg-background">
             <SelectValue placeholder="All Roles" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Roles</SelectItem>
             <SelectItem value={Role.ADMIN}>Admin</SelectItem>
             <SelectItem value={Role.MANAGER}>Manager</SelectItem>
-            <SelectItem value={Role.CHECKER}>Checker</SelectItem>
+            <SelectItem value={Role.DEV}>Dev</SelectItem>
             <SelectItem value={Role.CTV}>CTV</SelectItem>
-            <SelectItem value={Role.VIEWER}>Viewer</SelectItem>
+            <SelectItem value={Role.CHECKER}>Checker</SelectItem>
           </SelectContent>
         </Select>
         <Select
@@ -209,7 +209,7 @@ export default function UsersPage() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-[150px]">
+          <SelectTrigger className="w-[150px] bg-background">
             <SelectValue placeholder="All Status" />
           </SelectTrigger>
           <SelectContent>
@@ -221,7 +221,7 @@ export default function UsersPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-md border">
+      <div className="rounded-md border bg-background">
         <Table>
           <TableHeader>
             <TableRow>

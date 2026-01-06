@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User, Role } from '@/types';
 import { authApi } from '@/lib/api';
+import { queryClient } from '@/lib/query-client';
 
 interface AuthState {
   user: User | null;
@@ -74,6 +75,9 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           // Ignore logout API errors
         } finally {
+          // Clear React Query cache to prevent stale data from previous user
+          queryClient.clear();
+
           set({
             user: null,
             accessToken: null,
@@ -119,11 +123,51 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
+      version: 2,
       partialize: (state) => ({
         accessToken: state.accessToken,
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
       }),
-      onRehydrateStorage: () => (state) => {
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.error('Failed to rehydrate auth state:', error);
+          // Clear corrupted storage
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth-storage');
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            document.cookie = 'accessToken=; path=/; max-age=0';
+          }
+        }
         state?.setHasHydrated(true);
+
+        // Auto-validate token after hydration
+        if (state?.accessToken && typeof window !== 'undefined') {
+          state.fetchUser().catch(() => {
+            // If fetchUser fails, clear everything
+            console.warn('Token validation failed, clearing auth state');
+          });
+        }
+      },
+      migrate: (persistedState: unknown, version: number) => {
+        // Handle migration from older versions
+        if (!persistedState || typeof persistedState !== 'object') {
+          return { accessToken: null, user: null, isAuthenticated: false };
+        }
+
+        const state = persistedState as Record<string, unknown>;
+
+        // Version 1 only had accessToken, need to add user and isAuthenticated
+        if (version < 2) {
+          return {
+            accessToken: state.accessToken as string | null,
+            user: null,
+            isAuthenticated: false,
+          };
+        }
+
+        return persistedState as { accessToken: string | null; user: User | null; isAuthenticated: boolean };
       },
     }
   )

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -24,6 +25,7 @@ import {
   X,
   Download,
   Settings2,
+  TrendingUp,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -62,42 +64,16 @@ import { Label } from '@/components/ui/label';
 import { AddWebsiteDialog } from '@/components/websites/add-website-dialog';
 import { WebsiteDetailDialog } from '@/components/websites/website-detail-dialog';
 import { EditWebsiteDialog } from '@/components/websites/edit-website-dialog';
+import { PerformanceDialog } from '@/components/websites/performance-dialog';
 import { websiteApi } from '@/lib/api';
+import {
+  STATUS_BADGE_CLASSES,
+  STATUS_LABELS,
+  TYPE_BADGE_CLASSES,
+  TYPE_LABELS,
+} from '@/lib/constants';
 import { Website, WebsiteStatus, WebsiteType, WebsiteMetrics, WebsiteFilters } from '@/types';
-
-const statusColors: Record<WebsiteStatus, string> = {
-  [WebsiteStatus.NEW]: 'bg-blue-100 text-blue-800',
-  [WebsiteStatus.CHECKING]: 'bg-yellow-100 text-yellow-800',
-  [WebsiteStatus.HANDING]: 'bg-orange-100 text-orange-800',
-  [WebsiteStatus.PENDING]: 'bg-purple-100 text-purple-800',
-  [WebsiteStatus.RUNNING]: 'bg-green-100 text-green-800',
-  [WebsiteStatus.ERROR]: 'bg-red-100 text-red-800',
-  [WebsiteStatus.MAINTENANCE]: 'bg-gray-100 text-gray-800',
-};
-
-const statusLabels: Record<WebsiteStatus, string> = {
-  [WebsiteStatus.NEW]: 'New',
-  [WebsiteStatus.CHECKING]: 'Checking',
-  [WebsiteStatus.HANDING]: 'Handing',
-  [WebsiteStatus.PENDING]: 'Pending',
-  [WebsiteStatus.RUNNING]: 'Running',
-  [WebsiteStatus.ERROR]: 'Error',
-  [WebsiteStatus.MAINTENANCE]: 'Maintenance',
-};
-
-const typeColors: Record<WebsiteType, string> = {
-  [WebsiteType.ENTITY]: 'bg-blue-100 text-blue-800',
-  [WebsiteType.BLOG2]: 'bg-purple-100 text-purple-800',
-  [WebsiteType.PODCAST]: 'bg-pink-100 text-pink-800',
-  [WebsiteType.SOCIAL]: 'bg-cyan-100 text-cyan-800',
-};
-
-const typeLabels: Record<WebsiteType, string> = {
-  [WebsiteType.ENTITY]: 'Entity',
-  [WebsiteType.BLOG2]: 'Blog 2.0',
-  [WebsiteType.PODCAST]: 'Podcast',
-  [WebsiteType.SOCIAL]: 'Social',
-};
+import { useAuthStore } from '@/stores';
 
 function formatTraffic(traffic?: number): string {
   if (!traffic) return '-';
@@ -297,15 +273,37 @@ function formatDate(date: string | null | undefined): string {
   return format(new Date(date), 'dd/MM/yyyy HH:mm');
 }
 
-export default function WebsitesPage() {
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(10);
+function WebsitesPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { user } = useAuthStore();
+
+  // Read initial values from URL
+  const initialPage = parseInt(searchParams.get('page') || '1', 10);
+  const initialPageSize = parseInt(searchParams.get('limit') || '10', 10);
+  const initialSearch = searchParams.get('search') || '';
+  const initialFilters: WebsiteFilters = {
+    sortBy: (searchParams.get('sortBy') as WebsiteFilters['sortBy']) || defaultFilters.sortBy,
+    sortOrder: (searchParams.get('sortOrder') as WebsiteFilters['sortOrder']) || defaultFilters.sortOrder,
+    type: (searchParams.get('type') as WebsiteFilters['type']) || undefined,
+    status: (searchParams.get('status') as WebsiteFilters['status']) || undefined,
+    index: (searchParams.get('index') as WebsiteFilters['index']) || undefined,
+    captcha_type: (searchParams.get('captcha_type') as WebsiteFilters['captcha_type']) || undefined,
+    captcha_provider: (searchParams.get('captcha_provider') as WebsiteFilters['captcha_provider']) || undefined,
+    required_gmail: (searchParams.get('required_gmail') as WebsiteFilters['required_gmail']) || undefined,
+    verify: (searchParams.get('verify') as WebsiteFilters['verify']) || undefined,
+  };
+
+  const [search, setSearch] = useState(initialSearch);
+  const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState<number>(initialPageSize);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [filters, setFilters] = useState<WebsiteFilters>(defaultFilters);
+  const [isPerformanceDialogOpen, setIsPerformanceDialogOpen] = useState(false);
+  const [filters, setFilters] = useState<WebsiteFilters>(initialFilters);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectAllPages, setIsSelectAllPages] = useState(false); // Select all across all pages
@@ -314,6 +312,79 @@ export default function WebsitesPage() {
   const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(DEFAULT_VISIBLE_COLUMNS);
   const [isColumnSelectorOpen, setIsColumnSelectorOpen] = useState(false);
   const queryClient = useQueryClient();
+
+  // Sync state to URL
+  const updateURL = useCallback(
+    (updates: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      filters?: WebsiteFilters;
+    }) => {
+      const params = new URLSearchParams(searchParams.toString());
+
+      // Update page
+      if (updates.page !== undefined) {
+        if (updates.page === 1) {
+          params.delete('page');
+        } else {
+          params.set('page', updates.page.toString());
+        }
+      }
+
+      // Update limit
+      if (updates.limit !== undefined) {
+        if (updates.limit === 10) {
+          params.delete('limit');
+        } else {
+          params.set('limit', updates.limit.toString());
+        }
+      }
+
+      // Update search
+      if (updates.search !== undefined) {
+        if (updates.search === '') {
+          params.delete('search');
+        } else {
+          params.set('search', updates.search);
+        }
+      }
+
+      // Update filters
+      if (updates.filters !== undefined) {
+        const filterKeys = [
+          'sortBy',
+          'sortOrder',
+          'type',
+          'status',
+          'index',
+          'captcha_type',
+          'captcha_provider',
+          'required_gmail',
+          'verify',
+        ] as const;
+
+        filterKeys.forEach((key) => {
+          const value = updates.filters?.[key];
+          // Don't include default sort values in URL
+          if (key === 'sortBy' && value === 'traffic') {
+            params.delete(key);
+          } else if (key === 'sortOrder' && value === 'desc') {
+            params.delete(key);
+          } else if (value) {
+            params.set(key, value);
+          } else {
+            params.delete(key);
+          }
+        });
+      }
+
+      const queryString = params.toString();
+      const newPath = queryString ? `${pathname}?${queryString}` : pathname;
+      router.replace(newPath, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
 
   // Load visible columns from localStorage
   useEffect(() => {
@@ -367,15 +438,15 @@ export default function WebsitesPage() {
 
       case 'type':
         return (
-          <Badge variant="secondary" className={typeColors[website.type]}>
-            {typeLabels[website.type]}
+          <Badge variant="secondary" className={TYPE_BADGE_CLASSES[website.type]}>
+            {TYPE_LABELS[website.type]}
           </Badge>
         );
 
       case 'status':
         return (
-          <Badge variant="secondary" className={statusColors[website.status]}>
-            {statusLabels[website.status]}
+          <Badge variant="secondary" className={STATUS_BADGE_CLASSES[website.status]}>
+            {STATUS_LABELS[website.status]}
           </Badge>
         );
 
@@ -385,15 +456,14 @@ export default function WebsitesPage() {
       case 'DA':
         return (
           <span
-            className={`font-medium ${
-              metrics?.DA
-                ? metrics.DA >= 30
-                  ? 'text-green-600'
-                  : metrics.DA >= 15
-                    ? 'text-yellow-600'
-                    : 'text-red-600'
-                : ''
-            }`}
+            className={`font-medium ${metrics?.DA
+              ? metrics.DA >= 30
+                ? 'text-green-600'
+                : metrics.DA >= 15
+                  ? 'text-yellow-600'
+                  : 'text-red-600'
+              : ''
+              }`}
           >
             {metrics?.DA ?? '-'}
           </span>
@@ -478,8 +548,8 @@ export default function WebsitesPage() {
         if (!metrics?.about) return <span className="text-muted-foreground">-</span>;
         const aboutLabel = metrics.about === 'stacking_post' ? 'Stack Post'
           : metrics.about === 'stacking_about' ? 'Stack About'
-          : metrics.about === 'long_about' ? 'Long About'
-          : 'No Stack';
+            : metrics.about === 'long_about' ? 'Long About'
+              : 'No Stack';
         const aboutColor = metrics.about === 'no_stacking'
           ? 'bg-gray-50 text-gray-600 border-gray-200'
           : metrics.about === 'long_about'
@@ -635,13 +705,15 @@ export default function WebsitesPage() {
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['websites', search, page, pageSize, filters],
+    queryKey: ['websites', user?.id, search, page, pageSize, filters],
     queryFn: () => websiteApi.getAll({ search, page, limit: pageSize, ...filters }),
+    enabled: !!user, // Only fetch when user is available
   });
 
   const clearFilters = () => {
     setFilters(defaultFilters);
     setPage(1);
+    updateURL({ page: 1, filters: defaultFilters });
   };
 
   const updateFilter = <K extends keyof WebsiteFilters>(key: K, value: WebsiteFilters[K] | undefined | null) => {
@@ -656,6 +728,8 @@ export default function WebsitesPage() {
       if (key === 'captcha_type' && value !== 'captcha') {
         delete newFilters.captcha_provider;
       }
+      // Update URL with new filters
+      updateURL({ page: 1, filters: newFilters });
       return newFilters;
     });
     setPage(1);
@@ -689,6 +763,11 @@ export default function WebsitesPage() {
   const handleEdit = (website: Website) => {
     setSelectedWebsite(website);
     setIsEditDialogOpen(true);
+  };
+
+  const handleViewPerformance = (website: Website) => {
+    setSelectedWebsite(website);
+    setIsPerformanceDialogOpen(true);
   };
 
   // Selection handlers
@@ -811,7 +890,7 @@ export default function WebsitesPage() {
 
     return {
       domain: website.domain,
-      Type: typeLabels[website.type] || website.type,
+      Type: TYPE_LABELS[website.type] || website.type,
       index: metrics.index === 'yes' ? 'Yes' : metrics.index === 'no' ? 'No' : '',
       traffic: metrics.traffic ? formatTraffic(metrics.traffic) : '',
       DA: metrics.DA ?? '',
@@ -927,6 +1006,11 @@ export default function WebsitesPage() {
         open={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
       />
+      <PerformanceDialog
+        website={selectedWebsite}
+        open={isPerformanceDialogOpen}
+        onOpenChange={setIsPerformanceDialogOpen}
+      />
 
       <div className="flex items-center gap-4 mb-4">
         <div className="relative flex-1 max-w-sm">
@@ -935,10 +1019,12 @@ export default function WebsitesPage() {
             placeholder="Search websites..."
             value={search}
             onChange={(e) => {
-              setSearch(e.target.value);
+              const newSearch = e.target.value;
+              setSearch(newSearch);
               setPage(1); // Reset to first page when searching
+              updateURL({ search: newSearch, page: 1 });
             }}
-            className="pl-9"
+            className="pl-9 bg-background"
           />
         </div>
 
@@ -1244,7 +1330,7 @@ export default function WebsitesPage() {
         </div>
       )}
 
-      <div className="rounded-md border overflow-auto max-h-[calc(100vh-320px)] scrollbar-thin">
+      <div className="rounded-md border overflow-auto max-h-[calc(100vh-320px)] scrollbar-thin bg-background">
         <Table containerClassName="">
           <TableHeader className="sticky top-0 bg-background z-10 shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
             <TableRow>
@@ -1333,6 +1419,10 @@ export default function WebsitesPage() {
                           <Edit className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleViewPerformance(website)}>
+                          <TrendingUp className="mr-2 h-4 w-4" />
+                          View Performance
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-red-600"
                           onClick={() => handleDelete(website.id)}
@@ -1356,11 +1446,13 @@ export default function WebsitesPage() {
           <Select
             value={pageSize.toString()}
             onValueChange={(value) => {
-              setPageSize(Number(value));
+              const newPageSize = Number(value);
+              setPageSize(newPageSize);
               setPage(1); // Reset to first page when changing page size
+              updateURL({ limit: newPageSize, page: 1 });
             }}
           >
-            <SelectTrigger className="h-8 w-[70px]">
+            <SelectTrigger className="h-8 w-[70px] bg-background">
               <SelectValue placeholder={pageSize.toString()} />
             </SelectTrigger>
             <SelectContent>
@@ -1374,12 +1466,15 @@ export default function WebsitesPage() {
           <span>of {total} websites</span>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 bg-background">
           <Button
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setPage(1)}
+            onClick={() => {
+              setPage(1);
+              updateURL({ page: 1 });
+            }}
             disabled={page === 1 || isLoading}
           >
             <ChevronsLeft className="h-4 w-4" />
@@ -1388,7 +1483,11 @@ export default function WebsitesPage() {
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setPage(page - 1)}
+            onClick={() => {
+              const newPage = page - 1;
+              setPage(newPage);
+              updateURL({ page: newPage });
+            }}
             disabled={page === 1 || isLoading}
           >
             <ChevronLeft className="h-4 w-4" />
@@ -1402,7 +1501,11 @@ export default function WebsitesPage() {
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setPage(page + 1)}
+            onClick={() => {
+              const newPage = page + 1;
+              setPage(newPage);
+              updateURL({ page: newPage });
+            }}
             disabled={page >= totalPages || isLoading}
           >
             <ChevronRight className="h-4 w-4" />
@@ -1411,7 +1514,10 @@ export default function WebsitesPage() {
             variant="outline"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setPage(totalPages)}
+            onClick={() => {
+              setPage(totalPages);
+              updateURL({ page: totalPages });
+            }}
             disabled={page >= totalPages || isLoading}
           >
             <ChevronsRight className="h-4 w-4" />
@@ -1419,5 +1525,33 @@ export default function WebsitesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function WebsitesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <Skeleton className="h-9 w-32 mb-2" />
+              <Skeleton className="h-5 w-64" />
+            </div>
+            <Skeleton className="h-10 w-32" />
+          </div>
+          <div className="flex items-center gap-4 mb-4">
+            <Skeleton className="h-10 w-64" />
+            <Skeleton className="h-10 w-10" />
+            <Skeleton className="h-10 w-10" />
+          </div>
+          <div className="rounded-md border">
+            <Skeleton className="h-[400px] w-full" />
+          </div>
+        </div>
+      }
+    >
+      <WebsitesPageContent />
+    </Suspense>
   );
 }

@@ -2,9 +2,9 @@
 export enum Role {
   ADMIN = 'ADMIN',
   MANAGER = 'MANAGER',
-  CHECKER = 'CHECKER',
+  DEV = 'DEV',
   CTV = 'CTV',
-  VIEWER = 'VIEWER',
+  CHECKER = 'CHECKER',
 }
 
 export enum WebsiteStatus {

@@ -150,4 +150,109 @@ export const websiteApi = {
     );
     return response.data.data;
   },
+
+  // Get website performance data
+  getPerformance: async (
+    id: string,
+    options?: { startDate?: string; endDate?: string; days?: number }
+  ): Promise<WebsitePerformanceResponse> => {
+    const response = await apiClient.get<ApiSuccessResponse<WebsitePerformanceResponse>>(
+      `/websites/performance/${id}`,
+      { params: options }
+    );
+    return response.data.data;
+  },
+
+  // Compare performance between two periods
+  comparePerformance: async (
+    id: string,
+    period1Start: string,
+    period1End: string,
+    period2Start: string,
+    period2End: string
+  ): Promise<PerformanceComparisonResponse> => {
+    const response = await apiClient.get<ApiSuccessResponse<PerformanceComparisonResponse>>(
+      `/websites/performance/${id}/compare`,
+      {
+        params: { period1Start, period1End, period2Start, period2End },
+      }
+    );
+    return response.data.data;
+  },
 };
+
+// Performance types
+export interface PerformanceDataPoint {
+  date: string;
+  successRate: number | null; // null only when no historical data available
+  allocationCount: number;
+  successCount: number;
+  failureCount: number;
+  isCarriedForward?: boolean; // true if successRate is carried from previous day (no allocations today)
+  editors?: {
+    userId: string;
+    userName: string | null;
+    userEmail: string;
+    editedAt: string;
+    changes: Record<string, unknown>;
+  }[];
+}
+
+// Stats for each editor's responsibility period
+export interface EditorPerformanceStats {
+  userId: string;
+  userName: string | null;
+  userEmail: string;
+  editedAt: string; // When they made the edit
+  periodStart: string; // Start of their responsibility period
+  periodEnd: string; // End of their responsibility period (next edit or endDate)
+  totalAllocations: number;
+  totalSuccess: number;
+  totalFailure: number;
+  successRate: number | null; // null if no allocations in period
+}
+
+export interface WebsitePerformanceResponse {
+  website: {
+    id: string;
+    domain: string;
+    status: string;
+    type: string;
+  };
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+  stats: {
+    totalAllocations: number;
+    totalSuccess: number;
+    totalFailure: number;
+    overallSuccessRate: number;
+    editorCount: number;
+  };
+  editorStats: EditorPerformanceStats[]; // Stats per editor's period
+  data: PerformanceDataPoint[];
+}
+
+export interface PerformanceComparisonResponse {
+  period1: {
+    start: string;
+    end: string;
+    totalAllocations: number;
+    totalSuccess: number;
+    totalFailure: number;
+    overallSuccessRate: number;
+  };
+  period2: {
+    start: string;
+    end: string;
+    totalAllocations: number;
+    totalSuccess: number;
+    totalFailure: number;
+    overallSuccessRate: number;
+  };
+  improvement: {
+    successRateChange: number;
+    improved: boolean;
+  };
+}

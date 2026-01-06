@@ -178,9 +178,9 @@ export function AddUserDialog({ open, onOpenChange }: AddUserDialogProps) {
                     <SelectContent>
                       <SelectItem value={Role.ADMIN}>Admin</SelectItem>
                       <SelectItem value={Role.MANAGER}>Manager</SelectItem>
-                      <SelectItem value={Role.CHECKER}>Checker</SelectItem>
+                      <SelectItem value={Role.DEV}>Dev</SelectItem>
                       <SelectItem value={Role.CTV}>CTV</SelectItem>
-                      <SelectItem value={Role.VIEWER}>Viewer</SelectItem>
+                      <SelectItem value={Role.CHECKER}>Checker</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
