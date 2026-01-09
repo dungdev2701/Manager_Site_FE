@@ -13,7 +13,7 @@ import {
 
 export interface BulkWebsiteItem {
   domain: string;
-  type?: WebsiteType;
+  types?: WebsiteType[];
   metrics?: WebsiteMetrics;
   status?: WebsiteStatus;
 }
@@ -43,7 +43,7 @@ export const websiteApi = {
   },
 
   getById: async (id: string): Promise<Website> => {
-    const response = await apiClient.get<ApiSuccessResponse<Website>>(`/websites/${id}`);
+    const response = await apiClient.get<ApiSuccessResponse<Website>>(`/websites/detail/${id}`);
     return response.data.data;
   },
 
@@ -217,7 +217,7 @@ export interface WebsitePerformanceResponse {
     id: string;
     domain: string;
     status: string;
-    type: string;
+    types: string[];
   };
   period: {
     startDate: string;

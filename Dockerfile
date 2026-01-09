@@ -19,7 +19,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Build arguments cho environment variables
-ARG NEXT_PUBLIC_API_URL
+# Mặc định là production URL, override bằng --build-arg nếu cần
+ARG NEXT_PUBLIC_API_URL=https://sites.likepion.com/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 # Build Next.js

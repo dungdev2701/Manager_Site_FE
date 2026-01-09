@@ -338,7 +338,7 @@ export default function DEVStatistics() {
                               </p>
                               <div className="flex items-center gap-2 mt-0.5">
                                 <Badge variant="outline" className="text-xs">
-                                  {website.type}
+                                  {website.types?.join(', ') || '-'}
                                 </Badge>
                                 <span className="text-xs text-muted-foreground">
                                   {website.allocations} allocations
@@ -565,7 +565,7 @@ export default function DEVStatistics() {
                           <p className="font-medium">{website.domain}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <Badge variant="outline" className="text-xs">
-                              {website.type}
+                              {website.types?.join(', ') || '-'}
                             </Badge>
                             {website.notes && (
                               <span className="text-xs text-muted-foreground truncate max-w-[300px]">

@@ -40,16 +40,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { websiteApi, BulkWebsiteItem } from '@/lib/api';
 import { WebsiteMetrics, WebsiteStatus, WebsiteType } from '@/types';
 
+const TYPE_OPTIONS = [
+  { value: 'ENTITY' as const, label: 'Entity' },
+  { value: 'BLOG2' as const, label: 'Blog 2.0' },
+  { value: 'PODCAST' as const, label: 'Podcast' },
+  { value: 'SOCIAL' as const, label: 'Social' },
+  { value: 'GG_STACKING' as const, label: 'GG Stacking' },
+];
+
 const singleWebsiteSchema = z.object({
   domain: z.string().min(1, 'Domain is required'),
-  type: z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL']).optional(),
+  types: z.array(z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL', 'GG_STACKING'])).optional(),
   notes: z.string().max(5000).optional(),
   // Metrics fields - use string for form input, convert when submitting
   traffic: z.string().optional(),
   DA: z.string().optional(),
   captcha_type: z.enum(['captcha', 'normal']).optional(),
   captcha_provider: z.enum(['recaptcha', 'hcaptcha']).optional(), // Only when captcha_type = 'captcha'
-  cloudflare: z.enum(['yes', 'no']).optional(), // Only when captcha_type = 'normal'
+  cloudflare: z.enum(['yes', 'no']).optional(), // Can be set for both captcha and normal types
   index: z.enum(['yes', 'no']).optional(),
   username: z.enum(['unique', 'duplicate', 'no']).optional(), // Unique: không trùng, Duplicate: được trùng, No: không có username
   email: z.enum(['multi', 'no_multi']).optional(),
@@ -97,6 +105,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
     defaultValues: {
       domain: '',
       notes: '',
+      types: [],
       social_connect: [],
     },
   });
@@ -304,22 +313,26 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
               metrics.captcha_type = 'normal';
             }
 
-            // Kiểu Captcha (Recaptcha, HCaptcha, Cloudflare, No)
-            const captchaTypeVal = String(row['kiểu Captcha'] || row['Kiểu Captcha'] || row['captcha_type'] || row['Kieu Captcha'] || '').toLowerCase().trim();
-            if (captchaTypeVal === 'recaptcha') {
+            // Kiểu Captcha (Recaptcha, HCaptcha, No)
+            const captchaProviderVal = String(row['kiểu Captcha'] || row['Kiểu Captcha'] || row['captcha_provider'] || row['Kieu Captcha'] || '').toLowerCase().trim();
+            if (captchaProviderVal === 'recaptcha') {
               metrics.captcha_type = 'captcha';
               metrics.captcha_provider = 'recaptcha';
-            } else if (captchaTypeVal === 'hcaptcha') {
+            } else if (captchaProviderVal === 'hcaptcha') {
               metrics.captcha_type = 'captcha';
               metrics.captcha_provider = 'hcaptcha';
-            } else if (captchaTypeVal === 'cloudflare') {
-              metrics.captcha_type = 'normal';
-              metrics.cloudflare = true;
-            } else if (captchaTypeVal === 'no' || captchaTypeVal === 'none') {
-              // No captcha provider - just normal without cloudflare
+            } else if (captchaProviderVal === 'no' || captchaProviderVal === 'none') {
+              // No captcha provider
               if (!metrics.captcha_type) {
                 metrics.captcha_type = 'normal';
               }
+            }
+
+            // Cloudflare (Yes/No) - can be set for both captcha and normal types
+            const cloudflareVal = String(row['Cloudflare'] || row['cloudflare'] || row['CF'] || '').toLowerCase().trim();
+            if (cloudflareVal === 'yes' || cloudflareVal === 'true' || cloudflareVal === '1') {
+              metrics.cloudflare = true;
+            } else if (cloudflareVal === 'no' || cloudflareVal === 'false' || cloudflareVal === '0') {
               metrics.cloudflare = false;
             }
 
@@ -444,7 +457,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
             const firstRow = jsonData[0];
             const keys = Object.keys(firstRow).map(k => k.toLowerCase());
             // Check if there are any metrics columns beyond domain
-            const metricsColumns = ['index', 'traffic', 'da', 'captcha', 'kiểu captcha', 'username', 'email', 'verify', 'about', 'text link', 'social connect', 'avatar', 'cover', 'status'];
+            const metricsColumns = ['index', 'traffic', 'da', 'captcha', 'kiểu captcha', 'cloudflare', 'cf', 'username', 'email', 'verify', 'about', 'text link', 'social connect', 'avatar', 'cover', 'status'];
             const hasMetrics = metricsColumns.some(col => keys.some(k => k.includes(col)));
             resolve(hasMetrics);
           } else {
@@ -582,8 +595,8 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
       if (data.captcha_type === 'captcha' && data.captcha_provider) {
         metrics.captcha_provider = data.captcha_provider;
       }
-      // Only save cloudflare if captcha_type is 'normal'
-      if (data.captcha_type === 'normal' && data.cloudflare) {
+      // Save cloudflare for both captcha and normal types
+      if (data.cloudflare) {
         metrics.cloudflare = data.cloudflare === 'yes';
       }
     }
@@ -605,7 +618,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
 
     createSingleMutation.mutate({
       domain: data.domain,
-      type: data.type as WebsiteType | undefined,
+      types: data.types && data.types.length > 0 ? data.types as WebsiteType[] : undefined,
       notes: data.notes,
       metrics: Object.keys(metrics).length > 0 ? metrics : undefined,
     });
@@ -680,23 +693,37 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
 
                 <FormField
                   control={singleForm.control}
-                  name="type"
-                  render={({ field }) => (
+                  name="types"
+                  render={() => (
                     <FormItem>
-                      <FormLabel>Type</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select type..." />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="ENTITY">Entity</SelectItem>
-                          <SelectItem value="BLOG2">Blog 2.0</SelectItem>
-                          <SelectItem value="PODCAST">Podcast</SelectItem>
-                          <SelectItem value="SOCIAL">Social</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>Types</FormLabel>
+                      <div className="flex flex-wrap gap-4">
+                        {TYPE_OPTIONS.map((option) => (
+                          <div key={option.value} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`type-${option.value}`}
+                              checked={(singleForm.watch('types') || []).includes(option.value)}
+                              onCheckedChange={(checked) => {
+                                const current = singleForm.getValues('types') || [];
+                                if (checked) {
+                                  singleForm.setValue('types', [...current, option.value]);
+                                } else {
+                                  singleForm.setValue(
+                                    'types',
+                                    current.filter((v) => v !== option.value)
+                                  );
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`type-${option.value}`}
+                              className="text-sm font-medium leading-none cursor-pointer"
+                            >
+                              {option.label}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -792,9 +819,10 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
                               <Select
                                 onValueChange={(value) => {
                                   field.onChange(value);
-                                  // Reset conditional fields when captcha_type changes
-                                  singleForm.setValue('captcha_provider', undefined);
-                                  singleForm.setValue('cloudflare', undefined);
+                                  // Reset captcha_provider when captcha_type changes to normal
+                                  if (value === 'normal') {
+                                    singleForm.setValue('captcha_provider', undefined);
+                                  }
                                 }}
                                 value={field.value}
                               >
@@ -838,31 +866,6 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
                           />
                         )}
 
-                        {/* Show Cloudflare if captcha_type is 'normal' */}
-                        {singleForm.watch('captcha_type') === 'normal' && (
-                          <FormField
-                            control={singleForm.control}
-                            name="cloudflare"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Cloudflare</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger className="w-full">
-                                      <SelectValue placeholder="Select..." />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="yes">Yes</SelectItem>
-                                    <SelectItem value="no">No</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        )}
-
                         {/* Show Index if captcha_type is not selected */}
                         {!singleForm.watch('captcha_type') && (
                           <FormField
@@ -889,7 +892,32 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
                         )}
                       </div>
 
-                      {/* Row 2.5: Index & Email */}
+                      {/* Row 2.5: Cloudflare (show for both captcha types) */}
+                      {singleForm.watch('captcha_type') && (
+                        <FormField
+                          control={singleForm.control}
+                          name="cloudflare"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Cloudflare</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="yes">Yes</SelectItem>
+                                  <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+
+                      {/* Row 3: Index & Email */}
                       <div className="grid grid-cols-2 gap-4">
                         {singleForm.watch('captcha_type') && (
                           <FormField
@@ -1240,7 +1268,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Upload a .txt file (one domain per line) or Excel file with columns: domain, index, traffic, DA, Captcha, kiểu Captcha, username, Email, verify, About, Text Link, Social Connect, Avatar, Cover, Status
+                    Upload a .txt file (one domain per line) or Excel file with columns: domain, index, traffic, DA, Captcha, kiểu Captcha, Cloudflare, username, Email, verify, About, Text Link, Social Connect, Avatar, Cover, Status
                   </p>
                 </div>
 

@@ -22,6 +22,7 @@ export enum WebsiteType {
   BLOG2 = 'BLOG2',
   PODCAST = 'PODCAST',
   SOCIAL = 'SOCIAL',
+  GG_STACKING = 'GG_STACKING',
 }
 
 export enum PeriodType {
@@ -52,7 +53,7 @@ export interface WebsiteMetrics {
   // Captcha info
   captcha_type?: 'captcha' | 'normal';
   captcha_provider?: 'recaptcha' | 'hcaptcha'; // Only when captcha_type = 'captcha'
-  cloudflare?: boolean; // Only when captcha_type = 'normal'
+  cloudflare?: boolean; // Can be true for both captcha and normal types
   // Index
   index?: 'yes' | 'no';
   // About
@@ -73,7 +74,7 @@ export interface WebsiteMetrics {
 export interface Website {
   id: string;
   domain: string;
-  type: WebsiteType;
+  types: WebsiteType[];
   status: WebsiteStatus;
   notes?: string | null;
   metrics?: WebsiteMetrics | null;
@@ -219,6 +220,9 @@ export interface WebsiteFilters {
   required_gmail?: 'yes' | 'no';
   // Filter by verify
   verify?: 'yes' | 'no';
+  // Filter by date range
+  startDate?: string; // Format: YYYY-MM-DD
+  endDate?: string; // Format: YYYY-MM-DD
 }
 
 // ==================== WEBSITE QUERIES ====================
@@ -230,7 +234,7 @@ export interface WebsiteQuery extends PaginationQuery, SearchQuery, WebsiteFilte
 
 export interface CreateWebsiteRequest {
   domain: string;
-  type?: WebsiteType;
+  types?: WebsiteType[];
   status?: WebsiteStatus;
   notes?: string;
   priority?: number;
@@ -241,7 +245,7 @@ export interface CreateWebsiteRequest {
 
 export interface UpdateWebsiteRequest {
   domain?: string;
-  type?: WebsiteType;
+  types?: WebsiteType[];
   status?: WebsiteStatus;
   notes?: string;
   priority?: number;

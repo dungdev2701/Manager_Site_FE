@@ -509,7 +509,7 @@ function AdminStatistics() {
                           <p className="font-medium">{website.domain}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <Badge variant="outline" className="text-xs">
-                              {getTypeLabel(website.type)}
+                              {website.types?.map(t => getTypeLabel(t)).join(', ') || '-'}
                             </Badge>
                             <span>{website.allocations.toLocaleString()} allocations</span>
                           </div>

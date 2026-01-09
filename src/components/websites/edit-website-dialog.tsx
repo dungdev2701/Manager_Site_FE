@@ -39,7 +39,7 @@ import { websiteApi } from '@/lib/api';
 import { Website, WebsiteStatus, WebsiteType, WebsiteMetrics } from '@/types';
 
 const editWebsiteSchema = z.object({
-  type: z.nativeEnum(WebsiteType),
+  types: z.array(z.nativeEnum(WebsiteType)).min(1, 'At least one type is required'),
   status: z.nativeEnum(WebsiteStatus),
   notes: z.string().max(5000).optional(),
   // Metrics fields - use string for form input, convert when submitting
@@ -47,7 +47,7 @@ const editWebsiteSchema = z.object({
   DA: z.string().optional(),
   captcha_type: z.string().optional(),
   captcha_provider: z.string().optional(), // Only when captcha_type = 'captcha'
-  cloudflare: z.string().optional(), // Only when captcha_type = 'normal'
+  cloudflare: z.string().optional(), // Can be set for both captcha and normal types
   index: z.string().optional(),
   username: z.string().optional(), // Username allows numbers or not
   email: z.string().optional(),
@@ -91,6 +91,7 @@ const TYPE_OPTIONS = [
   { value: WebsiteType.BLOG2, label: 'Blog 2.0' },
   { value: WebsiteType.PODCAST, label: 'Podcast' },
   { value: WebsiteType.SOCIAL, label: 'Social' },
+  { value: WebsiteType.GG_STACKING, label: 'GG Stacking' },
 ];
 
 export function EditWebsiteDialog({
@@ -104,7 +105,7 @@ export function EditWebsiteDialog({
   const form = useForm<EditWebsiteFormValues>({
     resolver: zodResolver(editWebsiteSchema),
     defaultValues: {
-      type: WebsiteType.ENTITY,
+      types: [WebsiteType.ENTITY],
       status: WebsiteStatus.NEW,
       notes: '',
       social_connect: [],
@@ -116,7 +117,7 @@ export function EditWebsiteDialog({
     if (website) {
       const metrics = website.metrics;
       form.reset({
-        type: website.type,
+        types: website.types || [WebsiteType.ENTITY],
         status: website.status,
         notes: website.notes || '',
         traffic: metrics?.traffic?.toString() || '',
@@ -176,8 +177,8 @@ export function EditWebsiteDialog({
       if (data.captcha_type === 'captcha' && data.captcha_provider && data.captcha_provider !== '') {
         metrics.captcha_provider = data.captcha_provider as 'recaptcha' | 'hcaptcha';
       }
-      // Only save cloudflare if captcha_type is 'normal'
-      if (data.captcha_type === 'normal' && data.cloudflare && data.cloudflare !== '') {
+      // Save cloudflare for both captcha and normal types
+      if (data.cloudflare && data.cloudflare !== '') {
         metrics.cloudflare = data.cloudflare === 'yes';
       }
     }
@@ -199,7 +200,7 @@ export function EditWebsiteDialog({
     updateMutation.mutate({
       id: website.id,
       payload: {
-        type: data.type,
+        types: data.types,
         status: data.status,
         notes: data.notes,
         metrics: Object.keys(metrics).length > 0 ? metrics : undefined,
@@ -223,34 +224,50 @@ export function EditWebsiteDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Type & Status */}
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Type *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select type..." />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {TYPE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
+            {/* Types (Multi-select) */}
+            <FormField
+              control={form.control}
+              name="types"
+              render={() => (
+                <FormItem>
+                  <FormLabel>Types *</FormLabel>
+                  <div className="flex flex-wrap gap-3">
+                    {TYPE_OPTIONS.map((option) => {
+                      const selectedTypes = form.watch('types') || [];
+                      return (
+                        <div key={option.value} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`type-${option.value}`}
+                            checked={selectedTypes.includes(option.value)}
+                            onCheckedChange={(checked) => {
+                              const current = form.getValues('types') || [];
+                              if (checked) {
+                                form.setValue('types', [...current, option.value]);
+                              } else {
+                                form.setValue(
+                                  'types',
+                                  current.filter((v) => v !== option.value)
+                                );
+                              }
+                            }}
+                          />
+                          <label
+                            htmlFor={`type-${option.value}`}
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
                             {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <FormField
+            {/* Status */}
+            <FormField
                 control={form.control}
                 name="status"
                 render={({ field }) => (
@@ -274,7 +291,6 @@ export function EditWebsiteDialog({
                   </FormItem>
                 )}
               />
-            </div>
 
             {/* Notes */}
             <FormField
@@ -367,9 +383,10 @@ export function EditWebsiteDialog({
                           <Select
                             onValueChange={(value) => {
                               field.onChange(value);
-                              // Reset conditional fields when captcha_type changes
-                              form.setValue('captcha_provider', '');
-                              form.setValue('cloudflare', '');
+                              // Reset captcha_provider when captcha_type changes to normal
+                              if (value === 'normal') {
+                                form.setValue('captcha_provider', '');
+                              }
                             }}
                             value={field.value || ''}
                           >
@@ -413,31 +430,6 @@ export function EditWebsiteDialog({
                       />
                     )}
 
-                    {/* Show Cloudflare if captcha_type is 'normal' */}
-                    {form.watch('captcha_type') === 'normal' && (
-                      <FormField
-                        control={form.control}
-                        name="cloudflare"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Cloudflare</FormLabel>
-                            <Select onValueChange={field.onChange} value={field.value || ''}>
-                              <FormControl>
-                                <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="Select..." />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="yes">Yes</SelectItem>
-                                <SelectItem value="no">No</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
-
                     {/* Show Index if captcha_type is not selected */}
                     {!form.watch('captcha_type') && (
                       <FormField
@@ -464,7 +456,32 @@ export function EditWebsiteDialog({
                     )}
                   </div>
 
-                  {/* Row 2.5: Index & Email */}
+                  {/* Cloudflare (show for both captcha types) */}
+                  {form.watch('captcha_type') && (
+                    <FormField
+                      control={form.control}
+                      name="cloudflare"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cloudflare</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || ''}>
+                            <FormControl>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select..." />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="yes">Yes</SelectItem>
+                              <SelectItem value="no">No</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
+                  {/* Row 3: Index & Email */}
                   <div className="grid grid-cols-2 gap-4">
                     {form.watch('captcha_type') && (
                       <FormField

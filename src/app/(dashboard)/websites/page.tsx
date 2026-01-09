@@ -65,6 +65,7 @@ import { AddWebsiteDialog } from '@/components/websites/add-website-dialog';
 import { WebsiteDetailDialog } from '@/components/websites/website-detail-dialog';
 import { EditWebsiteDialog } from '@/components/websites/edit-website-dialog';
 import { PerformanceDialog } from '@/components/websites/performance-dialog';
+import { EditableCell, SelectOption } from '@/components/websites/editable-cell';
 import { websiteApi } from '@/lib/api';
 import {
   STATUS_BADGE_CLASSES,
@@ -125,20 +126,11 @@ function CaptchaBadge({ metrics }: { metrics: WebsiteMetrics }) {
   }
 
   // Normal type
-  const cloudflareLabel = metrics.cloudflare ? 'Cloudflare' : 'No Cloudflare';
-
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 cursor-default">
-          <ShieldCheck className="h-3 w-3 mr-1" />
-          Normal
-        </Badge>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{cloudflareLabel}</p>
-      </TooltipContent>
-    </Tooltip>
+    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 cursor-default">
+      <ShieldCheck className="h-3 w-3 mr-1" />
+      Normal
+    </Badge>
   );
 }
 
@@ -179,6 +171,7 @@ type ColumnId =
   | 'index'
   | 'captcha'
   | 'captchaProvider'
+  | 'cloudflare'
   | 'username'
   | 'email'
   | 'requiredGmail'
@@ -224,6 +217,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { id: 'index', label: 'Index', group: 'metrics', width: 'w-[80px]', align: 'center' },
   { id: 'captcha', label: 'Captcha', group: 'metrics', width: 'w-[120px]', align: 'center' },
   { id: 'captchaProvider', label: 'Captcha Provider', group: 'metrics', width: 'w-[140px]', align: 'center' },
+  { id: 'cloudflare', label: 'Cloudflare', group: 'metrics', width: 'w-[100px]', align: 'center' },
   { id: 'username', label: 'Username', group: 'metrics', width: 'w-[100px]', align: 'center' },
   { id: 'email', label: 'Email', group: 'metrics', width: 'w-[100px]', align: 'center' },
   { id: 'requiredGmail', label: 'Required Gmail', group: 'metrics', width: 'w-[120px]', align: 'center' },
@@ -293,6 +287,8 @@ function WebsitesPageContent() {
     captcha_provider: (searchParams.get('captcha_provider') as WebsiteFilters['captcha_provider']) || undefined,
     required_gmail: (searchParams.get('required_gmail') as WebsiteFilters['required_gmail']) || undefined,
     verify: (searchParams.get('verify') as WebsiteFilters['verify']) || undefined,
+    startDate: searchParams.get('startDate') || undefined,
+    endDate: searchParams.get('endDate') || undefined,
   };
 
   const [search, setSearch] = useState(initialSearch);
@@ -362,6 +358,8 @@ function WebsitesPageContent() {
           'captcha_provider',
           'required_gmail',
           'verify',
+          'startDate',
+          'endDate',
         ] as const;
 
         filterKeys.forEach((key) => {
@@ -428,6 +426,159 @@ function WebsitesPageContent() {
     return ALL_COLUMNS.filter((col) => visibleColumns.includes(col.id));
   }, [visibleColumns]);
 
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['websites', user?.id, search, page, pageSize, filters],
+    queryFn: () => websiteApi.getAll({ search, page, limit: pageSize, ...filters }),
+    enabled: !!user, // Only fetch when user is available
+  });
+
+  const clearFilters = useCallback(() => {
+    setFilters(defaultFilters);
+    setPage(1);
+    // Update URL after state changes (using setTimeout to avoid updating during render)
+    setTimeout(() => {
+      updateURL({ page: 1, filters: defaultFilters });
+    }, 0);
+  }, [updateURL]);
+
+  const updateFilter = useCallback(<K extends keyof WebsiteFilters>(key: K, value: WebsiteFilters[K] | undefined | null) => {
+    // Calculate new filters first
+    const newFilters = { ...filters };
+    if (value === undefined || value === null) {
+      delete newFilters[key];
+    } else {
+      newFilters[key] = value;
+    }
+    // If captcha_type is cleared or changed to 'normal', clear captcha_provider
+    if (key === 'captcha_type' && value !== 'captcha') {
+      delete newFilters.captcha_provider;
+    }
+
+    // Update state
+    setFilters(newFilters);
+    setPage(1);
+
+    // Update URL after state changes (using setTimeout to avoid updating during render)
+    setTimeout(() => {
+      updateURL({ page: 1, filters: newFilters });
+    }, 0);
+  }, [filters, updateURL]);
+
+  const totalPages = data?.meta?.totalPages || 1;
+  const total = data?.meta?.total || 0;
+
+  const deleteMutation = useMutation({
+    mutationFn: websiteApi.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['websites'] });
+      toast.success('Website moved to trash. It will be permanently deleted after 30 days.');
+    },
+    onError: () => {
+      toast.error('Failed to delete website');
+    },
+  });
+
+  // Inline update mutation
+  const inlineUpdateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof websiteApi.update>[1] }) =>
+      websiteApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['websites'] });
+      toast.success('Updated successfully');
+    },
+    onError: () => {
+      toast.error('Failed to update');
+    },
+  });
+
+  // Handle inline cell update
+  const handleInlineUpdate = useCallback(
+    async (websiteId: string, field: string, value: unknown) => {
+      // Build update data based on field
+      let updateData: Parameters<typeof websiteApi.update>[1] = {};
+
+      if (field === 'status') {
+        updateData = { status: value as WebsiteStatus };
+      } else if (field === 'types') {
+        updateData = { types: value as WebsiteType[] };
+      } else if (field === 'notes') {
+        updateData = { notes: value as string };
+      } else if (field.startsWith('metrics.')) {
+        // Handle metrics fields
+        const metricsField = field.replace('metrics.', '');
+        const currentWebsite = data?.websites.find((w) => w.id === websiteId);
+        const currentMetrics = currentWebsite?.metrics || {};
+        updateData = {
+          metrics: {
+            ...currentMetrics,
+            [metricsField]: value,
+          },
+        };
+      }
+
+      await inlineUpdateMutation.mutateAsync({ id: websiteId, data: updateData });
+    },
+    [inlineUpdateMutation, data?.websites]
+  );
+
+  // Select options for inline editing
+  const statusOptions: SelectOption[] = useMemo(() => [
+    { value: WebsiteStatus.NEW, label: 'New' },
+    { value: WebsiteStatus.CHECKING, label: 'Checking' },
+    { value: WebsiteStatus.HANDING, label: 'Handing' },
+    { value: WebsiteStatus.PENDING, label: 'Pending' },
+    { value: WebsiteStatus.RUNNING, label: 'Running' },
+    { value: WebsiteStatus.ERROR, label: 'Error' },
+    { value: WebsiteStatus.MAINTENANCE, label: 'Maintenance' },
+  ], []);
+
+  const indexOptions: SelectOption[] = useMemo(() => [
+    { value: 'yes', label: 'Yes' },
+    { value: 'no', label: 'No' },
+  ], []);
+
+  const captchaTypeOptions: SelectOption[] = useMemo(() => [
+    { value: 'captcha', label: 'Captcha' },
+    { value: 'normal', label: 'Normal' },
+  ], []);
+
+  const captchaProviderOptions: SelectOption[] = useMemo(() => [
+    { value: 'recaptcha', label: 'reCaptcha' },
+    { value: 'hcaptcha', label: 'hCaptcha' },
+  ], []);
+
+  const yesNoOptions: SelectOption[] = useMemo(() => [
+    { value: 'yes', label: 'Yes' },
+    { value: 'no', label: 'No' },
+  ], []);
+
+  const usernameOptions: SelectOption[] = useMemo(() => [
+    { value: 'unique', label: 'Unique' },
+    { value: 'duplicate', label: 'Duplicate' },
+    { value: 'no', label: 'No' },
+  ], []);
+
+  const emailOptions: SelectOption[] = useMemo(() => [
+    { value: 'multi', label: 'Multi' },
+    { value: 'no_multi', label: 'No Multi' },
+  ], []);
+
+  const aboutOptions: SelectOption[] = useMemo(() => [
+    { value: 'no_stacking', label: 'No Stacking' },
+    { value: 'stacking_post', label: 'Stack Post' },
+    { value: 'stacking_about', label: 'Stack About' },
+    { value: 'long_about', label: 'Long About' },
+  ], []);
+
+  const textLinkOptions: SelectOption[] = useMemo(() => [
+    { value: 'no', label: 'No' },
+    { value: 'href', label: 'Href' },
+    { value: 'markdown', label: 'Markdown' },
+    { value: 'BBCode', label: 'BBCode' },
+  ], []);
+
   // Render cell content based on column id
   const renderCellContent = useCallback((columnId: ColumnId, website: Website) => {
     const metrics = website.metrics;
@@ -438,54 +589,106 @@ function WebsitesPageContent() {
 
       case 'type':
         return (
-          <Badge variant="secondary" className={TYPE_BADGE_CLASSES[website.type]}>
-            {TYPE_LABELS[website.type]}
-          </Badge>
+          <div className="flex flex-wrap gap-1 justify-center">
+            {website.types.map((t) => (
+              <Badge key={t} variant="secondary" className={TYPE_BADGE_CLASSES[t]}>
+                {TYPE_LABELS[t]}
+              </Badge>
+            ))}
+          </div>
         );
 
       case 'status':
         return (
-          <Badge variant="secondary" className={STATUS_BADGE_CLASSES[website.status]}>
-            {STATUS_LABELS[website.status]}
-          </Badge>
+          <EditableCell
+            value={website.status}
+            type="select"
+            options={statusOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'status', value)}
+            displayValue={
+              <Badge variant="secondary" className={STATUS_BADGE_CLASSES[website.status]}>
+                {STATUS_LABELS[website.status]}
+              </Badge>
+            }
+          />
         );
 
       case 'traffic':
-        return <span className="font-medium">{formatTraffic(metrics?.traffic)}</span>;
+        return (
+          <EditableCell
+            value={metrics?.traffic ?? ''}
+            type="number"
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.traffic', value ? Number(value) : null)}
+            displayValue={<span className="font-medium">{formatTraffic(metrics?.traffic)}</span>}
+          />
+        );
 
       case 'DA':
         return (
-          <span
-            className={`font-medium ${metrics?.DA
-              ? metrics.DA >= 30
-                ? 'text-green-600'
-                : metrics.DA >= 15
-                  ? 'text-yellow-600'
-                  : 'text-red-600'
-              : ''
-              }`}
-          >
-            {metrics?.DA ?? '-'}
-          </span>
+          <EditableCell
+            value={metrics?.DA ?? ''}
+            type="number"
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.DA', value ? Number(value) : null)}
+            displayValue={
+              <span
+                className={`font-medium ${metrics?.DA
+                  ? metrics.DA >= 30
+                    ? 'text-green-600'
+                    : metrics.DA >= 15
+                      ? 'text-yellow-600'
+                      : 'text-red-600'
+                  : ''
+                  }`}
+              >
+                {metrics?.DA ?? '-'}
+              </span>
+            }
+          />
         );
 
       case 'index':
-        return <IndexBadge index={metrics?.index} />;
+        return (
+          <EditableCell
+            value={metrics?.index ?? ''}
+            type="select"
+            options={indexOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.index', value || null)}
+            displayValue={<IndexBadge index={metrics?.index} />}
+          />
+        );
 
       case 'captcha':
-        return metrics ? (
-          <CaptchaBadge metrics={metrics} />
-        ) : (
-          <span className="text-muted-foreground">-</span>
+        return (
+          <EditableCell
+            value={metrics?.captcha_type ?? ''}
+            type="select"
+            options={captchaTypeOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.captcha_type', value || null)}
+            displayValue={
+              metrics ? (
+                <CaptchaBadge metrics={metrics} />
+              ) : (
+                <span className="text-muted-foreground">-</span>
+              )
+            }
+          />
         );
 
       case 'captchaProvider':
         if (!metrics?.captcha_type) return <span className="text-muted-foreground">-</span>;
         if (metrics.captcha_type === 'captcha') {
           return (
-            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-              {metrics.captcha_provider === 'recaptcha' ? 'reCaptcha' : metrics.captcha_provider === 'hcaptcha' ? 'hCaptcha' : '-'}
-            </Badge>
+            <EditableCell
+              value={metrics?.captcha_provider ?? ''}
+              type="select"
+              options={captchaProviderOptions}
+              onSave={(value) => handleInlineUpdate(website.id, 'metrics.captcha_provider', value || null)}
+              displayValue={
+                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                  {metrics.captcha_provider === 'recaptcha' ? 'reCaptcha' : metrics.captcha_provider === 'hcaptcha' ? 'hCaptcha' : '-'}
+                </Badge>
+              }
+            />
           );
         }
         return (
@@ -494,80 +697,169 @@ function WebsitesPageContent() {
           </Badge>
         );
 
-      case 'username':
-        if (!metrics?.username) return <span className="text-muted-foreground">-</span>;
+      case 'cloudflare':
         return (
-          <Badge
-            variant="outline"
-            className={
-              metrics.username === 'unique'
-                ? 'bg-green-50 text-green-700 border-green-200'
-                : metrics.username === 'duplicate'
-                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                  : 'bg-gray-50 text-gray-600 border-gray-200'
+          <EditableCell
+            value={metrics?.cloudflare === undefined ? '' : metrics.cloudflare ? 'yes' : 'no'}
+            type="select"
+            options={yesNoOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.cloudflare', value === 'yes' ? true : value === 'no' ? false : null)}
+            displayValue={
+              metrics?.cloudflare === undefined ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={metrics.cloudflare ? 'bg-yellow-50 text-yellow-700 border-yellow-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+                >
+                  {metrics.cloudflare ? 'Yes' : 'No'}
+                </Badge>
+              )
             }
-          >
-            {metrics.username === 'unique' ? 'Unique' : metrics.username === 'duplicate' ? 'Duplicate' : 'No'}
-          </Badge>
+          />
+        );
+
+      case 'username':
+        return (
+          <EditableCell
+            value={metrics?.username ?? ''}
+            type="select"
+            options={usernameOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.username', value || null)}
+            displayValue={
+              !metrics?.username ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={
+                    metrics.username === 'unique'
+                      ? 'bg-green-50 text-green-700 border-green-200'
+                      : metrics.username === 'duplicate'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-gray-50 text-gray-600 border-gray-200'
+                  }
+                >
+                  {metrics.username === 'unique' ? 'Unique' : metrics.username === 'duplicate' ? 'Duplicate' : 'No'}
+                </Badge>
+              )
+            }
+          />
         );
 
       case 'email':
-        if (!metrics?.email) return <span className="text-muted-foreground">-</span>;
         return (
-          <Badge
-            variant="outline"
-            className={metrics.email === 'multi' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
-          >
-            {metrics.email === 'multi' ? 'Multi' : 'No Multi'}
-          </Badge>
+          <EditableCell
+            value={metrics?.email ?? ''}
+            type="select"
+            options={emailOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.email', value || null)}
+            displayValue={
+              !metrics?.email ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={metrics.email === 'multi' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+                >
+                  {metrics.email === 'multi' ? 'Multi' : 'No Multi'}
+                </Badge>
+              )
+            }
+          />
         );
 
       case 'requiredGmail':
-        if (!metrics?.required_gmail) return <span className="text-muted-foreground">-</span>;
         return (
-          <Badge
-            variant="outline"
-            className={metrics.required_gmail === 'yes' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'}
-          >
-            {metrics.required_gmail === 'yes' ? 'Required' : 'Not Required'}
-          </Badge>
+          <EditableCell
+            value={metrics?.required_gmail ?? ''}
+            type="select"
+            options={yesNoOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.required_gmail', value || null)}
+            displayValue={
+              !metrics?.required_gmail ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={metrics.required_gmail === 'yes' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-green-50 text-green-700 border-green-200'}
+                >
+                  {metrics.required_gmail === 'yes' ? 'Required' : 'Not Required'}
+                </Badge>
+              )
+            }
+          />
         );
 
       case 'verify':
-        if (!metrics?.verify) return <span className="text-muted-foreground">-</span>;
         return (
-          <Badge
-            variant="outline"
-            className={metrics.verify === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
-          >
-            {metrics.verify === 'yes' ? 'Yes' : 'No'}
-          </Badge>
+          <EditableCell
+            value={metrics?.verify ?? ''}
+            type="select"
+            options={yesNoOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.verify', value || null)}
+            displayValue={
+              !metrics?.verify ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={metrics.verify === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+                >
+                  {metrics.verify === 'yes' ? 'Yes' : 'No'}
+                </Badge>
+              )
+            }
+          />
         );
 
-      case 'about':
-        if (!metrics?.about) return <span className="text-muted-foreground">-</span>;
-        const aboutLabel = metrics.about === 'stacking_post' ? 'Stack Post'
-          : metrics.about === 'stacking_about' ? 'Stack About'
-            : metrics.about === 'long_about' ? 'Long About'
+      case 'about': {
+        const aboutLabel = metrics?.about === 'stacking_post' ? 'Stack Post'
+          : metrics?.about === 'stacking_about' ? 'Stack About'
+            : metrics?.about === 'long_about' ? 'Long About'
               : 'No Stack';
-        const aboutColor = metrics.about === 'no_stacking'
+        const aboutColor = metrics?.about === 'no_stacking'
           ? 'bg-gray-50 text-gray-600 border-gray-200'
-          : metrics.about === 'long_about'
+          : metrics?.about === 'long_about'
             ? 'bg-blue-50 text-blue-700 border-blue-200'
             : 'bg-purple-50 text-purple-700 border-purple-200';
         return (
-          <Badge variant="outline" className={aboutColor}>
-            {aboutLabel}
-            {metrics.about_max_chars ? ` (${metrics.about_max_chars})` : ''}
-          </Badge>
+          <EditableCell
+            value={metrics?.about ?? ''}
+            type="select"
+            options={aboutOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.about', value || null)}
+            displayValue={
+              !metrics?.about ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge variant="outline" className={aboutColor}>
+                  {aboutLabel}
+                  {metrics.about_max_chars ? ` (${metrics.about_max_chars})` : ''}
+                </Badge>
+              )
+            }
+          />
         );
+      }
 
       case 'textLink':
-        if (!metrics?.text_link) return <span className="text-muted-foreground">-</span>;
         return (
-          <Badge variant="outline">
-            {metrics.text_link === 'no' ? 'No' : metrics.text_link === 'href' ? 'Href' : metrics.text_link === 'markdown' ? 'Markdown' : 'BBCode'}
-          </Badge>
+          <EditableCell
+            value={metrics?.text_link ?? ''}
+            type="select"
+            options={textLinkOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.text_link', value || null)}
+            displayValue={
+              !metrics?.text_link ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge variant="outline">
+                  {metrics.text_link === 'no' ? 'No' : metrics.text_link === 'href' ? 'Href' : metrics.text_link === 'markdown' ? 'Markdown' : 'BBCode'}
+                </Badge>
+              )
+            }
+          />
         );
 
       case 'socialConnect':
@@ -585,25 +877,47 @@ function WebsitesPageContent() {
         );
 
       case 'avatar':
-        if (!metrics?.avatar) return <span className="text-muted-foreground">-</span>;
         return (
-          <Badge
-            variant="outline"
-            className={metrics.avatar === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
-          >
-            {metrics.avatar === 'yes' ? 'Yes' : 'No'}
-          </Badge>
+          <EditableCell
+            value={metrics?.avatar ?? ''}
+            type="select"
+            options={yesNoOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.avatar', value || null)}
+            displayValue={
+              !metrics?.avatar ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={metrics.avatar === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+                >
+                  {metrics.avatar === 'yes' ? 'Yes' : 'No'}
+                </Badge>
+              )
+            }
+          />
         );
 
       case 'cover':
-        if (!metrics?.cover) return <span className="text-muted-foreground">-</span>;
         return (
-          <Badge
-            variant="outline"
-            className={metrics.cover === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
-          >
-            {metrics.cover === 'yes' ? 'Yes' : 'No'}
-          </Badge>
+          <EditableCell
+            value={metrics?.cover ?? ''}
+            type="select"
+            options={yesNoOptions}
+            onSave={(value) => handleInlineUpdate(website.id, 'metrics.cover', value || null)}
+            displayValue={
+              !metrics?.cover ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={metrics.cover === 'yes' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-gray-600 border-gray-200'}
+                >
+                  {metrics.cover === 'yes' ? 'Yes' : 'No'}
+                </Badge>
+              )
+            }
+          />
         );
 
       case 'creator':
@@ -649,16 +963,26 @@ function WebsitesPageContent() {
         return <span className="text-sm">{formatDate(website.lastUsedAt)}</span>;
 
       case 'notes':
-        if (!website.notes) return <span className="text-muted-foreground">-</span>;
         return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-sm truncate max-w-[180px] block cursor-default">{website.notes}</span>
-            </TooltipTrigger>
-            <TooltipContent side="left" className="max-w-xs">
-              <p className="whitespace-pre-wrap">{website.notes}</p>
-            </TooltipContent>
-          </Tooltip>
+          <EditableCell
+            value={website.notes ?? ''}
+            type="textarea"
+            onSave={(value) => handleInlineUpdate(website.id, 'notes', value)}
+            displayValue={
+              !website.notes ? (
+                <span className="text-muted-foreground">-</span>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="text-sm truncate max-w-[180px] block cursor-default">{website.notes}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="max-w-xs">
+                    <p className="whitespace-pre-wrap">{website.notes}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )
+            }
+          />
         );
 
       case 'priority':
@@ -700,54 +1024,7 @@ function WebsitesPageContent() {
       default:
         return <span className="text-muted-foreground">-</span>;
     }
-  }, []);
-
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['websites', user?.id, search, page, pageSize, filters],
-    queryFn: () => websiteApi.getAll({ search, page, limit: pageSize, ...filters }),
-    enabled: !!user, // Only fetch when user is available
-  });
-
-  const clearFilters = () => {
-    setFilters(defaultFilters);
-    setPage(1);
-    updateURL({ page: 1, filters: defaultFilters });
-  };
-
-  const updateFilter = <K extends keyof WebsiteFilters>(key: K, value: WebsiteFilters[K] | undefined | null) => {
-    setFilters(prev => {
-      const newFilters = { ...prev };
-      if (value === undefined || value === null) {
-        delete newFilters[key];
-      } else {
-        newFilters[key] = value;
-      }
-      // If captcha_type is cleared or changed to 'normal', clear captcha_provider
-      if (key === 'captcha_type' && value !== 'captcha') {
-        delete newFilters.captcha_provider;
-      }
-      // Update URL with new filters
-      updateURL({ page: 1, filters: newFilters });
-      return newFilters;
-    });
-    setPage(1);
-  };
-
-  const totalPages = data?.meta?.totalPages || 1;
-  const total = data?.meta?.total || 0;
-
-  const deleteMutation = useMutation({
-    mutationFn: websiteApi.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['websites'] });
-      toast.success('Website moved to trash. It will be permanently deleted after 30 days.');
-    },
-    onError: () => {
-      toast.error('Failed to delete website');
-    },
-  });
+  }, [handleInlineUpdate, statusOptions, indexOptions, captchaTypeOptions, captchaProviderOptions, yesNoOptions, usernameOptions, emailOptions, aboutOptions, textLinkOptions]);
 
   const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to move this website to trash? It will be permanently deleted after 30 days.')) {
@@ -890,7 +1167,7 @@ function WebsitesPageContent() {
 
     return {
       domain: website.domain,
-      Type: TYPE_LABELS[website.type] || website.type,
+      Type: website.types.map(t => TYPE_LABELS[t] || t).join(', '),
       index: metrics.index === 'yes' ? 'Yes' : metrics.index === 'no' ? 'No' : '',
       traffic: metrics.traffic ? formatTraffic(metrics.traffic) : '',
       DA: metrics.DA ?? '',
@@ -1181,6 +1458,7 @@ function WebsitesPageContent() {
                     <SelectItem value={WebsiteType.BLOG2}>Blog 2.0</SelectItem>
                     <SelectItem value={WebsiteType.PODCAST}>Podcast</SelectItem>
                     <SelectItem value={WebsiteType.SOCIAL}>Social</SelectItem>
+                    <SelectItem value={WebsiteType.GG_STACKING}>GG Stacking</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1289,6 +1567,27 @@ function WebsitesPageContent() {
                     <SelectItem value="no">No</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Date range filter */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Created Date Range</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={filters.startDate || ''}
+                    onChange={(e) => updateFilter('startDate', e.target.value || undefined)}
+                    className="flex-1"
+                    placeholder="From"
+                  />
+                  <Input
+                    type="date"
+                    value={filters.endDate || ''}
+                    onChange={(e) => updateFilter('endDate', e.target.value || undefined)}
+                    className="flex-1"
+                    placeholder="To"
+                  />
+                </div>
               </div>
             </div>
           </PopoverContent>

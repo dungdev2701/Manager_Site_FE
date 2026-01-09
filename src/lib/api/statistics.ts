@@ -55,7 +55,7 @@ export interface TopWebsite {
   websiteId: string;
   domain: string;
   status: string;
-  type: string;
+  types: string[];
   allocations: number;
   success: number;
   failure: number;
@@ -179,7 +179,7 @@ export interface DEVTopWebsite {
   websiteId: string;
   domain: string;
   status: string;
-  type: string;
+  types: string[];
   allocations: number;
   success: number;
   failure: number;
@@ -190,7 +190,7 @@ export interface DEVErrorWebsite {
   id: string;
   domain: string;
   status: string;
-  type: string;
+  types: string[];
   updatedAt: string;
   notes?: string;
 }

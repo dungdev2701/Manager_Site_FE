@@ -8,7 +8,6 @@ import {
   Globe,
   Users,
   BarChart3,
-  Settings,
   LogOut,
   Menu,
   X,
@@ -55,12 +54,6 @@ const navItems: NavItem[] = [
     href: '/users',
     icon: Users,
     roles: [Role.ADMIN],
-  },
-  {
-    title: 'Settings',
-    href: '/settings',
-    icon: Settings,
-    roles: [Role.ADMIN, Role.MANAGER],
   },
 ];
 
