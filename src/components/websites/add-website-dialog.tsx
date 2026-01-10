@@ -73,6 +73,7 @@ const singleWebsiteSchema = z.object({
 
 const bulkWebsiteSchema = z.object({
   domains: z.string().min(1, 'At least one domain is required'),
+  types: z.array(z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL', 'GG_STACKING'])).optional(),
 });
 
 type SingleWebsiteFormValues = z.infer<typeof singleWebsiteSchema>;
@@ -114,6 +115,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
     resolver: zodResolver(bulkWebsiteSchema),
     defaultValues: {
       domains: '',
+      types: [],
     },
   });
 
@@ -625,13 +627,20 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
   };
 
   const onBulkSubmit = (data: BulkWebsiteFormValues) => {
+    const types = data.types && data.types.length > 0 ? data.types as WebsiteType[] : undefined;
+
     // If we have parsed websites with metrics from Excel, use the new API
     if (isExcelWithMetrics && bulkWebsites.length > 0) {
       if (bulkWebsites.length > 1000) {
         toast.error('Maximum 1000 websites allowed');
         return;
       }
-      createBulkWithMetricsMutation.mutate(bulkWebsites);
+      // Add types to each website item
+      const websitesWithTypes = bulkWebsites.map(w => ({
+        ...w,
+        types: types || w.types,
+      }));
+      createBulkWithMetricsMutation.mutate(websitesWithTypes);
       return;
     }
 
@@ -651,7 +660,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
       return;
     }
 
-    createBulkMutation.mutate(domains);
+    createBulkMutation.mutate({ domains, types });
   };
 
   const isLoading = createSingleMutation.isPending || createBulkMutation.isPending || createBulkWithMetricsMutation.isPending;
@@ -1271,6 +1280,45 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
                     Upload a .txt file (one domain per line) or Excel file with columns: domain, index, traffic, DA, Captcha, kiểu Captcha, Cloudflare, username, Email, verify, About, Text Link, Social Connect, Avatar, Cover, Status
                   </p>
                 </div>
+
+                {/* Types Selection for Bulk Import */}
+                <FormField
+                  control={bulkForm.control}
+                  name="types"
+                  render={() => (
+                    <FormItem>
+                      <FormLabel>Types</FormLabel>
+                      <div className="flex flex-wrap gap-4">
+                        {TYPE_OPTIONS.map((option) => (
+                          <div key={option.value} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`bulk-type-${option.value}`}
+                              checked={(bulkForm.watch('types') || []).includes(option.value)}
+                              onCheckedChange={(checked) => {
+                                const current = bulkForm.getValues('types') || [];
+                                if (checked) {
+                                  bulkForm.setValue('types', [...current, option.value]);
+                                } else {
+                                  bulkForm.setValue(
+                                    'types',
+                                    current.filter((v) => v !== option.value)
+                                  );
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`bulk-type-${option.value}`}
+                              className="text-sm font-medium leading-none cursor-pointer"
+                            >
+                              {option.label}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">

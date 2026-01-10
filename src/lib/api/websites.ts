@@ -65,7 +65,7 @@ export const websiteApi = {
   },
 
   bulkCreate: async (
-    domains: string[]
+    data: { domains: string[]; types?: WebsiteType[] }
   ): Promise<{ created: number; duplicates: string[]; invalid: string[]; total: number }> => {
     const response = await apiClient.post<
       ApiSuccessResponse<{
@@ -74,9 +74,7 @@ export const websiteApi = {
         invalid: string[];
         total: number;
       }>
-    >('/websites/create-bulk', {
-      domains,
-    });
+    >('/websites/create-bulk', data);
     return response.data.data;
   },
 
