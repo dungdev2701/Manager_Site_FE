@@ -14,6 +14,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   RefreshCw,
+  Filter,
+  X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -51,6 +53,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Label } from '@/components/ui/label';
 import { toolApi } from '@/lib/api';
 import { Tool, ToolType, ToolStatus, ToolService, ToolQuery } from '@/types';
 import { useDebounce } from '@/hooks';
@@ -116,7 +124,24 @@ function ToolsPageContent() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
 
+  // Filter popover
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
   const debouncedSearch = useDebounce(search, 300);
+
+  // Count active filters
+  const activeFilterCount = [
+    statusFilter !== 'ALL' ? 1 : 0,
+    typeFilter !== 'ALL' ? 1 : 0,
+    serviceFilter !== 'ALL' ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
+
+  const clearFilters = () => {
+    setStatusFilter('ALL');
+    setTypeFilter('ALL');
+    setServiceFilter('ALL');
+    setPage(1);
+  };
 
   const query: ToolQuery = {
     page,
@@ -179,7 +204,7 @@ function ToolsPageContent() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-4 mb-4 flex-wrap">
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -193,62 +218,140 @@ function ToolsPageContent() {
           />
         </div>
 
-        <Select
-          value={statusFilter}
-          onValueChange={(value) => {
-            setStatusFilter(value as ToolStatus | 'ALL');
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All Status</SelectItem>
-            <SelectItem value={ToolStatus.RUNNING}>Running</SelectItem>
-            <SelectItem value={ToolStatus.DIE}>Die</SelectItem>
-          </SelectContent>
-        </Select>
+        <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="icon" className="relative">
+              <Filter className="h-4 w-4" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72" align="end">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">Filters</h4>
+                {activeFilterCount > 0 && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters} className="h-auto p-1 text-xs">
+                    <X className="h-3 w-3 mr-1" />
+                    Clear all
+                  </Button>
+                )}
+              </div>
 
-        <Select
-          value={typeFilter}
-          onValueChange={(value) => {
-            setTypeFilter(value as ToolType | 'ALL');
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="w-[130px]">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All Types</SelectItem>
-            <SelectItem value={ToolType.INDIVIDUAL}>Individual</SelectItem>
-            <SelectItem value={ToolType.GLOBAL}>Global</SelectItem>
-            <SelectItem value={ToolType.CANCEL}>Cancel</SelectItem>
-            <SelectItem value={ToolType.RE_RUNNING}>Re-running</SelectItem>
-          </SelectContent>
-        </Select>
+              {/* Status filter */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Status</Label>
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value) => {
+                    setStatusFilter(value as ToolStatus | 'ALL');
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Status</SelectItem>
+                    <SelectItem value={ToolStatus.RUNNING}>Running</SelectItem>
+                    <SelectItem value={ToolStatus.DIE}>Die</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-        <Select
-          value={serviceFilter}
-          onValueChange={(value) => {
-            setServiceFilter(value as ToolService | 'ALL');
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder="Service" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All Services</SelectItem>
-            <SelectItem value={ToolService.ENTITY}>Entity</SelectItem>
-            <SelectItem value={ToolService.SOCIAL}>Social</SelectItem>
-            <SelectItem value={ToolService.INDEX}>Index</SelectItem>
-            <SelectItem value={ToolService.GOOGLE_STACKING}>GG Stacking</SelectItem>
-            <SelectItem value={ToolService.BLOG}>Blog</SelectItem>
-            <SelectItem value={ToolService.PODCAST}>Podcast</SelectItem>
-          </SelectContent>
-        </Select>
+              {/* Type filter */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Type</Label>
+                <Select
+                  value={typeFilter}
+                  onValueChange={(value) => {
+                    setTypeFilter(value as ToolType | 'ALL');
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Types</SelectItem>
+                    <SelectItem value={ToolType.INDIVIDUAL}>Individual</SelectItem>
+                    <SelectItem value={ToolType.GLOBAL}>Global</SelectItem>
+                    <SelectItem value={ToolType.CANCEL}>Cancel</SelectItem>
+                    <SelectItem value={ToolType.RE_RUNNING}>Re-running</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Service filter */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Service</Label>
+                <Select
+                  value={serviceFilter}
+                  onValueChange={(value) => {
+                    setServiceFilter(value as ToolService | 'ALL');
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Services" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">All Services</SelectItem>
+                    <SelectItem value={ToolService.ENTITY}>Entity</SelectItem>
+                    <SelectItem value={ToolService.SOCIAL}>Social</SelectItem>
+                    <SelectItem value={ToolService.INDEX}>Index</SelectItem>
+                    <SelectItem value={ToolService.GOOGLE_STACKING}>GG Stacking</SelectItem>
+                    <SelectItem value={ToolService.BLOG}>Blog</SelectItem>
+                    <SelectItem value={ToolService.PODCAST}>Podcast</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Sort */}
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Sort by</Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={sortBy}
+                    onValueChange={(value) => {
+                      setSortBy(value as typeof sortBy);
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Select field" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="createdAt">Created Date</SelectItem>
+                      <SelectItem value="idTool">Tool ID</SelectItem>
+                      <SelectItem value="status">Status</SelectItem>
+                      <SelectItem value="type">Type</SelectItem>
+                      <SelectItem value="service">Service</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={sortOrder}
+                    onValueChange={(value) => {
+                      setSortOrder(value as 'asc' | 'desc');
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-24">
+                      <SelectValue placeholder="Order" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="asc">Asc</SelectItem>
+                      <SelectItem value="desc">Desc</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
 
         <Button
           variant="outline"
@@ -264,9 +367,9 @@ function ToolsPageContent() {
         <Table>
           <TableHeader className="sticky top-0 bg-background z-10 shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
             <TableRow>
-              <TableHead className="w-[120px]">
+              <TableHead className="w-[120px] text-center">
                 <button
-                  className="flex items-center gap-1 hover:text-foreground"
+                  className="flex items-center justify-center gap-1 hover:text-foreground w-full"
                   onClick={() => {
                     if (sortBy === 'idTool') {
                       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -283,7 +386,7 @@ function ToolsPageContent() {
               <TableHead className="w-[80px] text-center">Threads</TableHead>
               <TableHead className="w-[110px] text-center">
                 <button
-                  className="flex items-center gap-1 hover:text-foreground"
+                  className="flex items-center justify-center gap-1 hover:text-foreground w-full"
                   onClick={() => {
                     if (sortBy === 'type') {
                       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -299,7 +402,7 @@ function ToolsPageContent() {
               </TableHead>
               <TableHead className="w-[90px] text-center">
                 <button
-                  className="flex items-center gap-1 hover:text-foreground"
+                  className="flex items-center justify-center gap-1 hover:text-foreground w-full"
                   onClick={() => {
                     if (sortBy === 'status') {
                       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -315,7 +418,7 @@ function ToolsPageContent() {
               </TableHead>
               <TableHead className="w-[110px] text-center">
                 <button
-                  className="flex items-center gap-1 hover:text-foreground"
+                  className="flex items-center justify-center gap-1 hover:text-foreground w-full"
                   onClick={() => {
                     if (sortBy === 'service') {
                       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -334,7 +437,7 @@ function ToolsPageContent() {
               <TableHead className="w-[100px] text-center">User</TableHead>
               <TableHead className="w-[120px] text-center">
                 <button
-                  className="flex items-center gap-1 hover:text-foreground"
+                  className="flex items-center justify-center gap-1 hover:text-foreground w-full"
                   onClick={() => {
                     if (sortBy === 'createdAt') {
                       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -371,7 +474,7 @@ function ToolsPageContent() {
             ) : (
               data?.tools.map((tool) => (
                 <TableRow key={tool.id}>
-                  <TableCell>
+                  <TableCell className="text-center">
                     <span className="font-medium font-mono">{tool.idTool}</span>
                   </TableCell>
                   <TableCell className="text-center">

@@ -20,6 +20,7 @@ import {
   Loader2,
   Filter,
   X,
+  Download,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -157,6 +158,10 @@ function ProxiesPageContent() {
 
   // Filter popover
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  // Confirm dialogs
+  const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
+  const [checkConfirmOpen, setCheckConfirmOpen] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -333,6 +338,83 @@ function ProxiesPageContent() {
   const totalPages = data?.meta.totalPages || 1;
   const total = data?.meta.total || 0;
 
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Export to Excel
+  const handleExport = async (exportAll: boolean = false) => {
+    setIsExporting(true);
+
+    try {
+      let proxiesToExport: Proxy[] = [];
+
+      if (selectedIds.size > 0 && !exportAll) {
+        // Export selected proxies
+        proxiesToExport = data?.proxies.filter((p) => selectedIds.has(p.id)) || [];
+      } else {
+        // Export all proxies matching current filter
+        // Fetch all pages with limit 100 (max allowed by backend)
+        const exportQuery = { ...query, limit: 100 };
+        let currentPage = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const response = await proxyApi.getAll({
+            ...exportQuery,
+            page: currentPage,
+          });
+          proxiesToExport = [...proxiesToExport, ...response.proxies];
+          hasMore = currentPage < response.meta.totalPages;
+          currentPage++;
+        }
+      }
+
+      if (proxiesToExport.length === 0) {
+        toast.error('No proxies to export');
+        return;
+      }
+
+      // Dynamic import xlsx
+      const XLSX = await import('xlsx');
+
+      // Create data array with headers
+      const exportData = [
+        ['Proxy', 'Services', 'Status'],
+        ...proxiesToExport.map((proxy) => [
+          formatProxyString(proxy),
+          proxy.services.length > 0 ? proxy.services.map((s) => SERVICE_LABELS[s]).join(', ') : '',
+          STATUS_LABELS[proxy.status],
+        ]),
+      ];
+
+      // Create workbook and worksheet
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.aoa_to_sheet(exportData);
+
+      // Set column widths
+      worksheet['!cols'] = [
+        { wch: 50 }, // Proxy
+        { wch: 30 }, // Services
+        { wch: 15 }, // Status
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Proxies');
+
+      // Generate and download
+      const date = new Date().toISOString().split('T')[0];
+      const filename = `proxies_export_${date}.xlsx`;
+      XLSX.writeFile(workbook, filename);
+
+      toast.success(`Exported ${proxiesToExport.length} proxies successfully`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to export proxies: ${errorMessage}`);
+      console.error('Export error:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between mb-4">
@@ -353,13 +435,7 @@ function ProxiesPageContent() {
           ) : (
             <Button
               variant="outline"
-              onClick={() => {
-                if (selectedIds.size > 0) {
-                  checkSelectedMutation.mutate(Array.from(selectedIds));
-                } else {
-                  checkAllMutation.mutate();
-                }
-              }}
+              onClick={() => setCheckConfirmOpen(true)}
               disabled={checkAllMutation.isPending || checkSelectedMutation.isPending}
             >
               <Zap className="mr-2 h-4 w-4" />
@@ -408,6 +484,21 @@ function ProxiesPageContent() {
             }}
           />
         </div>
+
+        {/* Export button - always visible */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setExportConfirmOpen(true)}
+          disabled={isExporting}
+        >
+          {isExporting ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="mr-2 h-4 w-4" />
+          )}
+          {selectedIds.size > 0 ? `Export (${selectedIds.size})` : `Export All (${total})`}
+        </Button>
 
         {selectedIds.size > 0 && (
           <Button
@@ -910,6 +1001,60 @@ function ProxiesPageContent() {
               disabled={bulkDeleteMutation.isPending}
             >
               {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectedIds.size} proxies`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Export confirm dialog */}
+      <AlertDialog open={exportConfirmOpen} onOpenChange={setExportConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Export Proxies</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedIds.size > 0
+                ? `Are you sure you want to export ${selectedIds.size} selected proxies to Excel?`
+                : `Are you sure you want to export all ${total} proxies to Excel?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setExportConfirmOpen(false);
+                handleExport(selectedIds.size === 0);
+              }}
+            >
+              Export
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Check confirm dialog */}
+      <AlertDialog open={checkConfirmOpen} onOpenChange={setCheckConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Check Proxies</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selectedIds.size > 0
+                ? `Are you sure you want to check ${selectedIds.size} selected proxies?`
+                : `Are you sure you want to check all proxies?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setCheckConfirmOpen(false);
+                if (selectedIds.size > 0) {
+                  checkSelectedMutation.mutate(Array.from(selectedIds));
+                } else {
+                  checkAllMutation.mutate();
+                }
+              }}
+            >
+              Check
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
