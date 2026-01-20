@@ -11,6 +11,9 @@ import {
   LogOut,
   Menu,
   X,
+  Mail,
+  Wrench,
+  Network,
 } from 'lucide-react';
 
 const LikepionLogo = () => (
@@ -43,6 +46,21 @@ const navItems: NavItem[] = [
     title: 'Websites',
     href: '/websites',
     icon: Globe,
+  },
+  {
+    title: 'Emails',
+    href: '/emails',
+    icon: Mail,
+  },
+  {
+    title: 'Proxies',
+    href: '/proxies',
+    icon: Network,
+  },
+  {
+    title: 'Tools',
+    href: '/tools',
+    icon: Wrench,
   },
   {
     title: 'Statistics',

@@ -3,7 +3,13 @@ export { authApi } from './auth';
 export { websiteApi } from './websites';
 export { userApi } from './users';
 export { statisticsApi } from './statistics';
+export { gmailApi } from './gmails';
+export { toolApi } from './tools';
+export { proxyApi } from './proxies';
 export type { BulkWebsiteItem } from './websites';
+export type { GmailListResponse } from './gmails';
+export type { ToolListResponse } from './tools';
+export type { ProxyListResponse, CheckProgress } from './proxies';
 export type { UserQuery, CreateUserRequest, UpdateUserRequest, ResetPasswordRequest } from './users';
 export type {
   OverviewStats,

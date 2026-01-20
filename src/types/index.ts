@@ -253,3 +253,223 @@ export interface UpdateWebsiteRequest {
   tags?: string[];
   metrics?: WebsiteMetrics;
 }
+
+// ==================== GMAIL ====================
+export enum GmailStatus {
+  SUCCESS = 'SUCCESS',
+  FAILED = 'FAILED',
+}
+
+export interface GmailUsage {
+  id: string;
+  gmailId: string;
+  userId: string;
+  user: {
+    id: string;
+    name: string;
+  };
+  usedAt: string;
+}
+
+export interface Gmail {
+  id: string;
+  email: string;
+  password: string;
+  appPassword?: string | null;
+  twoFA?: string | null;
+  recoveryEmail?: string | null;
+  ownerId?: string | null;
+  owner?: User | null;
+  status: GmailStatus;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  usages?: GmailUsage[];
+}
+
+export interface GmailQuery extends PaginationQuery, SearchQuery {
+  status?: GmailStatus;
+  ownerId?: string; // Can be UUID or 'none' for null owner
+  startDate?: string; // ISO date string (YYYY-MM-DD)
+  endDate?: string; // ISO date string (YYYY-MM-DD)
+  sortBy?: 'email' | 'createdAt' | 'status';
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface CreateGmailRequest {
+  email: string;
+  password: string;
+  appPassword?: string;
+  twoFA?: string;
+  recoveryEmail?: string;
+  ownerId?: string;
+  status?: GmailStatus;
+}
+
+export interface UpdateGmailRequest {
+  email?: string;
+  password?: string;
+  appPassword?: string | null;
+  twoFA?: string | null;
+  recoveryEmail?: string | null;
+  ownerId?: string | null;
+  status?: GmailStatus;
+}
+
+// ==================== TOOL ====================
+export enum ToolType {
+  INDIVIDUAL = 'INDIVIDUAL',
+  GLOBAL = 'GLOBAL',
+  CANCEL = 'CANCEL',
+  RE_RUNNING = 'RE_RUNNING',
+}
+
+export enum ToolStatus {
+  RUNNING = 'RUNNING',
+  DIE = 'DIE',
+}
+
+export enum ToolService {
+  ENTITY = 'ENTITY',
+  SOCIAL = 'SOCIAL',
+  INDEX = 'INDEX',
+  GOOGLE_STACKING = 'GOOGLE_STACKING',
+  BLOG = 'BLOG',
+  PODCAST = 'PODCAST',
+}
+
+export interface Tool {
+  id: string;
+  userId?: string | null;
+  user?: User | null;
+  idTool: string;
+  threadNumber: number;
+  type: ToolType;
+  status: ToolStatus;
+  service: ToolService;
+  estimateTime?: number | null;
+  customerType?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+export interface ToolQuery extends PaginationQuery, SearchQuery {
+  type?: ToolType;
+  status?: ToolStatus;
+  service?: ToolService;
+  userId?: string;
+  sortBy?: 'idTool' | 'createdAt' | 'status' | 'type' | 'service';
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface CreateToolRequest {
+  idTool: string;
+  userId?: string;
+  threadNumber?: number;
+  type?: ToolType;
+  status?: ToolStatus;
+  service?: ToolService;
+  estimateTime?: number;
+  customerType?: string;
+}
+
+export interface UpdateToolRequest {
+  idTool?: string;
+  userId?: string | null;
+  threadNumber?: number;
+  type?: ToolType;
+  status?: ToolStatus;
+  service?: ToolService;
+  estimateTime?: number | null;
+  customerType?: string | null;
+}
+
+// ==================== PROXY ====================
+export enum ProxyType {
+  IPV4_STATIC = 'IPV4_STATIC',
+  IPV6_STATIC = 'IPV6_STATIC',
+  SOCKS5 = 'SOCKS5',
+  ROTATING = 'ROTATING',
+}
+
+export enum ProxyProtocol {
+  HTTP = 'HTTP',
+  HTTPS = 'HTTPS',
+  SOCKS4 = 'SOCKS4',
+  SOCKS5 = 'SOCKS5',
+}
+
+export enum ProxyStatus {
+  ACTIVE = 'ACTIVE',
+  DEAD = 'DEAD',
+  CHECKING = 'CHECKING',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export enum ProxyServiceType {
+  ENTITY = 'ENTITY',
+  BLOG_2_0 = 'BLOG_2_0',
+  PODCAST = 'PODCAST',
+  SOCIAL = 'SOCIAL',
+  GG_STACKING = 'GG_STACKING',
+}
+
+export interface Proxy {
+  id: string;
+  ip: string;
+  port: number;
+  username?: string | null;
+  password?: string | null;
+  type: ProxyType;
+  protocol: ProxyProtocol;
+  services: ProxyServiceType[];
+  status: ProxyStatus;
+  lastCheckedAt?: string | null;
+  responseTime?: number | null;
+  failCount: number;
+  country?: string | null;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProxyQuery extends PaginationQuery, SearchQuery {
+  type?: ProxyType;
+  protocol?: ProxyProtocol;
+  status?: ProxyStatus;
+  service?: ProxyServiceType;
+  country?: string;
+  sortBy?: 'ip' | 'createdAt' | 'status' | 'type' | 'responseTime' | 'lastCheckedAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface CreateProxyRequest {
+  ip: string;
+  port: number;
+  username?: string;
+  password?: string;
+  type?: ProxyType;
+  protocol?: ProxyProtocol;
+  services?: ProxyServiceType[];
+  note?: string;
+}
+
+export interface BulkCreateProxyRequest {
+  proxies: string; // Raw text with format: IP:PORT:USER:PASS per line
+  type?: ProxyType;
+  protocol?: ProxyProtocol;
+  services?: ProxyServiceType[];
+}
+
+export interface UpdateProxyRequest {
+  ip?: string;
+  port?: number;
+  username?: string | null;
+  password?: string | null;
+  type?: ProxyType;
+  protocol?: ProxyProtocol;
+  services?: ProxyServiceType[];
+  status?: ProxyStatus;
+  note?: string | null;
+}

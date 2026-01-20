@@ -75,6 +75,7 @@ import {
 } from '@/lib/constants';
 import { Website, WebsiteStatus, WebsiteType, WebsiteMetrics, WebsiteFilters } from '@/types';
 import { useAuthStore } from '@/stores';
+import { useDebounce } from '@/hooks';
 
 function formatTraffic(traffic?: number): string {
   if (!traffic) return '-';
@@ -291,7 +292,8 @@ function WebsitesPageContent() {
     endDate: searchParams.get('endDate') || undefined,
   };
 
-  const [search, setSearch] = useState(initialSearch);
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const debouncedSearch = useDebounce(searchInput, 400); // 400ms debounce
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState<number>(initialPageSize);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -429,10 +431,16 @@ function WebsitesPageContent() {
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['websites', user?.id, search, page, pageSize, filters],
-    queryFn: () => websiteApi.getAll({ search, page, limit: pageSize, ...filters }),
+    queryKey: ['websites', user?.id, debouncedSearch, page, pageSize, filters],
+    queryFn: () => websiteApi.getAll({ search: debouncedSearch, page, limit: pageSize, ...filters }),
     enabled: !!user, // Only fetch when user is available
   });
+
+  // Update URL when debounced search changes
+  useEffect(() => {
+    updateURL({ search: debouncedSearch, page: 1 });
+    setPage(1);
+  }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clearFilters = useCallback(() => {
     setFilters(defaultFilters);
@@ -1068,7 +1076,7 @@ function WebsitesPageContent() {
   const handleSelectAllPages = async () => {
     setIsLoadingSelectAll(true);
     try {
-      const result = await websiteApi.getAllIds({ search, ...filters });
+      const result = await websiteApi.getAllIds({ search: debouncedSearch, ...filters });
       setSelectedIds(new Set(result.ids));
       setIsSelectAllPages(true);
       toast.success(`Selected all ${result.total} websites`);
@@ -1294,13 +1302,8 @@ function WebsitesPageContent() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search websites..."
-            value={search}
-            onChange={(e) => {
-              const newSearch = e.target.value;
-              setSearch(newSearch);
-              setPage(1); // Reset to first page when searching
-              updateURL({ search: newSearch, page: 1 });
-            }}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
             className="pl-9 bg-background"
           />
         </div>
