@@ -20,6 +20,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -124,6 +125,11 @@ function ToolsPageContent() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
 
+  // Selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectAllPages, setSelectAllPages] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+
   // Filter popover
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
@@ -172,6 +178,99 @@ function ToolsPageContent() {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(ids.map((id) => toolApi.delete(id)));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tools'] });
+      toast.success(`${selectAllPages ? total : selectedIds.size} tools deleted successfully`);
+      setBulkDeleteDialogOpen(false);
+      setSelectedIds(new Set());
+      setSelectAllPages(false);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to delete tools');
+    },
+  });
+
+  // Pagination values - defined early for use in selection handlers
+  const totalPages = data?.meta.totalPages || 1;
+  const total = data?.meta.total || 0;
+
+  // Selection handlers
+  const currentPageIds = data?.tools.map((t) => t.id) || [];
+  const allPageSelected = currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
+  const someSelected = currentPageIds.some((id) => selectedIds.has(id));
+
+  // Check if we should show the "Select All Pages" banner
+  const isCurrentPageAllSelected = allPageSelected && !selectAllPages;
+  const showSelectAllBanner = (isCurrentPageAllSelected || selectAllPages) && total > limit;
+
+  const handleSelectAllPage = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set([...selectedIds, ...currentPageIds]));
+    } else {
+      if (selectAllPages) {
+        setSelectAllPages(false);
+      }
+      const newSet = new Set(selectedIds);
+      currentPageIds.forEach((id) => newSet.delete(id));
+      setSelectedIds(newSet);
+    }
+  };
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    if (selectAllPages && !checked) {
+      setSelectAllPages(false);
+    }
+    const newSet = new Set(selectedIds);
+    if (checked) {
+      newSet.add(id);
+    } else {
+      newSet.delete(id);
+    }
+    setSelectedIds(newSet);
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setSelectAllPages(false);
+  };
+
+  // Get all tool IDs for selectAllPages operations
+  const getAllToolIds = async (): Promise<string[]> => {
+    const allIds: string[] = [];
+    const fetchQuery = { ...query, limit: 100 };
+    let currentPageNum = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await toolApi.getAll({ ...fetchQuery, page: currentPageNum });
+      allIds.push(...response.tools.map((t) => t.id));
+      hasMore = currentPageNum < response.meta.totalPages;
+      currentPageNum++;
+    }
+
+    return allIds;
+  };
+
+  // Handle select all pages
+  const handleSelectAllPages = async () => {
+    setSelectAllPages(true);
+    setSelectedIds(new Set(currentPageIds));
+  };
+
+  const handleBulkDelete = async () => {
+    let idsToDelete: string[];
+    if (selectAllPages) {
+      idsToDelete = await getAllToolIds();
+    } else {
+      idsToDelete = Array.from(selectedIds);
+    }
+    bulkDeleteMutation.mutate(idsToDelete);
+  };
+
   const handleEdit = (tool: Tool) => {
     setSelectedTool(tool);
     setEditDialogOpen(true);
@@ -187,9 +286,6 @@ function ToolsPageContent() {
       deleteMutation.mutate(selectedTool.id);
     }
   };
-
-  const totalPages = data?.meta.totalPages || 1;
-  const total = data?.meta.total || 0;
 
   return (
     <div className="flex flex-col">
@@ -361,12 +457,42 @@ function ToolsPageContent() {
         >
           <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
         </Button>
+
+        {/* Selection Actions */}
+        {(selectedIds.size > 0 || selectAllPages) && (
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-sm font-medium text-blue-700 bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200">
+              {selectAllPages ? total : selectedIds.size} selected
+            </span>
+            <Button variant="ghost" size="sm" onClick={clearSelection} className="h-8">
+              <X className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDeleteDialogOpen(true)}
+              className="h-8"
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="rounded-md border overflow-auto max-h-[calc(100vh-320px)] scrollbar-thin bg-background">
         <Table>
           <TableHeader className="sticky top-0 bg-background z-10 shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
             <TableRow>
+              <TableHead className="w-[50px] text-center">
+                <Checkbox
+                  checked={selectAllPages || allPageSelected}
+                  onCheckedChange={handleSelectAllPage}
+                  aria-label="Select all"
+                  className={someSelected && !allPageSelected && !selectAllPages ? 'opacity-50' : ''}
+                />
+              </TableHead>
               <TableHead className="w-[120px] text-center">
                 <button
                   className="flex items-center justify-center gap-1 hover:text-foreground w-full"
@@ -455,10 +581,44 @@ function ToolsPageContent() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {/* Select All Pages Banner - inside table for better UX */}
+            {showSelectAllBanner && (
+              <TableRow className="bg-blue-50 hover:bg-blue-50">
+                <TableCell colSpan={11} className="py-2 text-center">
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    {selectAllPages ? (
+                      <>
+                        <span className="text-blue-800">
+                          All <strong>{total}</strong> tools are selected.
+                        </span>
+                        <button
+                          className="text-blue-600 hover:text-blue-800 underline font-medium"
+                          onClick={clearSelection}
+                        >
+                          Clear selection
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-blue-800">
+                          All <strong>{currentPageIds.length}</strong> tools on this page are selected.
+                        </span>
+                        <button
+                          className="text-blue-600 hover:text-blue-800 underline font-medium"
+                          onClick={handleSelectAllPages}
+                        >
+                          Select all {total} tools
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 10 }).map((_, j) => (
+                  {Array.from({ length: 11 }).map((_, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-6 w-full" />
                     </TableCell>
@@ -467,13 +627,20 @@ function ToolsPageContent() {
               ))
             ) : data?.tools.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   No tools found
                 </TableCell>
               </TableRow>
             ) : (
               data?.tools.map((tool) => (
-                <TableRow key={tool.id}>
+                <TableRow key={tool.id} className={selectAllPages || selectedIds.has(tool.id) ? 'bg-blue-50' : ''}>
+                  <TableCell className="text-center">
+                    <Checkbox
+                      checked={selectAllPages || selectedIds.has(tool.id)}
+                      onCheckedChange={(checked) => handleSelectOne(tool.id, !!checked)}
+                      aria-label={`Select ${tool.idTool}`}
+                    />
+                  </TableCell>
                   <TableCell className="text-center">
                     <span className="font-medium font-mono">{tool.idTool}</span>
                   </TableCell>
@@ -633,6 +800,29 @@ function ToolsPageContent() {
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectAllPages ? total : selectedIds.size} tools?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {selectAllPages ? total : selectedIds.size} selected tool{(selectAllPages ? total : selectedIds.size) > 1 ? 's' : ''}.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectAllPages ? total : selectedIds.size} tools`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

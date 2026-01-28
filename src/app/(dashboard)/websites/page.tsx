@@ -205,7 +205,7 @@ interface ColumnDef {
 const ALL_COLUMNS: ColumnDef[] = [
   // Basic Information
   { id: 'domain', label: 'Domain', group: 'basic', width: 'w-[180px]', align: 'left' },
-  { id: 'type', label: 'Type', group: 'basic', width: 'w-[100px]', align: 'center' },
+  { id: 'type', label: 'Type', group: 'basic', width: 'w-[150px]', align: 'center' },
   { id: 'status', label: 'Status', group: 'basic', width: 'w-[120px]', align: 'center' },
   { id: 'priority', label: 'Priority', group: 'basic', width: 'w-[80px]', align: 'center' },
   { id: 'category', label: 'Category', group: 'basic', width: 'w-[120px]', align: 'center' },
@@ -596,13 +596,33 @@ function WebsitesPageContent() {
         return <span className="font-medium">{website.domain}</span>;
 
       case 'type':
+        // Show max 2 badges, rest in tooltip
+        const maxVisible = 2;
+        const visibleTypes = website.types.slice(0, maxVisible);
+        const hiddenTypes = website.types.slice(maxVisible);
         return (
-          <div className="flex flex-wrap gap-1 justify-center">
-            {website.types.map((t) => (
-              <Badge key={t} variant="secondary" className={TYPE_BADGE_CLASSES[t]}>
+          <div className="flex flex-wrap gap-1 justify-center max-w-[140px]">
+            {visibleTypes.map((t) => (
+              <Badge key={t} variant="secondary" className={`${TYPE_BADGE_CLASSES[t]} text-xs px-1.5 py-0`}>
                 {TYPE_LABELS[t]}
               </Badge>
             ))}
+            {hiddenTypes.length > 0 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0 cursor-default bg-gray-100 text-gray-700">
+                    +{hiddenTypes.length}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex flex-col gap-1">
+                    {hiddenTypes.map((t) => (
+                      <span key={t}>{TYPE_LABELS[t]}</span>
+                    ))}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         );
 
@@ -1462,6 +1482,7 @@ function WebsitesPageContent() {
                     <SelectItem value={WebsiteType.PODCAST}>Podcast</SelectItem>
                     <SelectItem value={WebsiteType.SOCIAL}>Social</SelectItem>
                     <SelectItem value={WebsiteType.GG_STACKING}>GG Stacking</SelectItem>
+                    <SelectItem value={WebsiteType.ENTITY_SOCIAL}>Entity Social</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1597,41 +1618,6 @@ function WebsitesPageContent() {
         </Popover>
       </div>
 
-      {/* Select All Banner */}
-      {showSelectAllBanner && (
-        <div className="flex items-center justify-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-          <span className="text-sm text-blue-700">
-            All {currentPageIds.length} websites on this page are selected.
-          </span>
-          <Button
-            variant="link"
-            size="sm"
-            className="text-blue-700 font-medium h-auto p-0"
-            onClick={handleSelectAllPages}
-            disabled={isLoadingSelectAll}
-          >
-            {isLoadingSelectAll ? 'Loading...' : `Select all ${total} websites`}
-          </Button>
-        </div>
-      )}
-
-      {/* Select All Pages Active Banner */}
-      {isSelectAllPages && (
-        <div className="flex items-center justify-center gap-2 p-2 bg-green-50 border border-green-200 rounded-md">
-          <span className="text-sm text-green-700">
-            All {selectedIds.size} websites are selected.
-          </span>
-          <Button
-            variant="link"
-            size="sm"
-            className="text-green-700 font-medium h-auto p-0"
-            onClick={clearSelection}
-          >
-            Clear selection
-          </Button>
-        </div>
-      )}
-
       <div className="rounded-md border overflow-auto max-h-[calc(100vh-320px)] scrollbar-thin bg-background">
         <Table containerClassName="">
           <TableHeader className="sticky top-0 bg-background z-10 shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
@@ -1656,6 +1642,41 @@ function WebsitesPageContent() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {/* Select All Pages Banner - inside table for better UX */}
+            {(showSelectAllBanner || isSelectAllPages) && (
+              <TableRow className="bg-blue-50 hover:bg-blue-50">
+                <TableCell colSpan={visibleColumnDefs.length + 2} className="py-2 text-center">
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    {isSelectAllPages ? (
+                      <>
+                        <span className="text-blue-800">
+                          All <strong>{selectedIds.size}</strong> websites are selected.
+                        </span>
+                        <button
+                          className="text-blue-600 hover:text-blue-800 underline font-medium"
+                          onClick={clearSelection}
+                        >
+                          Clear selection
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-blue-800">
+                          All <strong>{currentPageIds.length}</strong> websites on this page are selected.
+                        </span>
+                        <button
+                          className="text-blue-600 hover:text-blue-800 underline font-medium"
+                          onClick={handleSelectAllPages}
+                          disabled={isLoadingSelectAll}
+                        >
+                          {isLoadingSelectAll ? 'Loading...' : `Select all ${total} websites`}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
             {isLoading &&
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={`skeleton-${i}`}>
@@ -1689,7 +1710,7 @@ function WebsitesPageContent() {
             {!isLoading &&
               !error &&
               data?.websites.map((website: Website) => (
-                <TableRow key={website.id} className={selectedIds.has(website.id) ? 'bg-muted/50' : ''}>
+                <TableRow key={website.id} className={isSelectAllPages || selectedIds.has(website.id) ? 'bg-blue-50' : ''}>
                   <TableCell>
                     <Checkbox
                       checked={selectedIds.has(website.id)}

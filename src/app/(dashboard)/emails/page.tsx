@@ -17,6 +17,9 @@ import {
   X,
   Filter,
   Download,
+  UserCheck,
+  MailCheck,
+  Loader2,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -99,6 +102,7 @@ function EmailsPageContent() {
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectAllPages, setSelectAllPages] = useState(false);
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
 
   // Export warning dialog
@@ -109,6 +113,10 @@ function EmailsPageContent() {
     users: Array<{ id: string; name: string; usedAt: string }>;
   }>>([]);
   const [pendingExportEmails, setPendingExportEmails] = useState<Gmail[]>([]);
+
+  // Check email state
+  const [checkingEmailId, setCheckingEmailId] = useState<string | null>(null);
+  const [bulkCheckingEmails, setBulkCheckingEmails] = useState(false);
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -173,15 +181,38 @@ function EmailsPageContent() {
     },
   });
 
+  const claimMutation = useMutation({
+    mutationFn: (id: string) => gmailApi.claimOwnership([id]),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gmails'] });
+      toast.success('Đã claim email thành công');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Không thể claim email');
+    },
+  });
+
+  // Pagination values - defined early for use in selection handlers
+  const totalPages = data?.meta.totalPages || 1;
+  const total = data?.meta.total || 0;
+
   // Selection handlers
   const currentPageIds = data?.gmails.map((g) => g.id) || [];
   const allPageSelected = currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
   const someSelected = currentPageIds.some((id) => selectedIds.has(id));
 
+  // Check if we should show the "Select All Pages" banner
+  const isCurrentPageAllSelected = allPageSelected && !selectAllPages;
+  const showSelectAllBanner = (isCurrentPageAllSelected || selectAllPages) && total > limit;
+
   const handleSelectAllPage = (checked: boolean) => {
     if (checked) {
       setSelectedIds(new Set([...selectedIds, ...currentPageIds]));
     } else {
+      // If selectAllPages was on, turn it off
+      if (selectAllPages) {
+        setSelectAllPages(false);
+      }
       const newSet = new Set(selectedIds);
       currentPageIds.forEach((id) => newSet.delete(id));
       setSelectedIds(newSet);
@@ -189,6 +220,10 @@ function EmailsPageContent() {
   };
 
   const handleSelectOne = (id: string, checked: boolean) => {
+    // If we're in selectAllPages mode and unchecking, exit that mode
+    if (selectAllPages && !checked) {
+      setSelectAllPages(false);
+    }
     const newSet = new Set(selectedIds);
     if (checked) {
       newSet.add(id);
@@ -200,35 +235,148 @@ function EmailsPageContent() {
 
   const clearSelection = () => {
     setSelectedIds(new Set());
+    setSelectAllPages(false);
   };
 
-  const handleBulkDelete = () => {
-    bulkDeleteMutation.mutate(Array.from(selectedIds));
+  // Get all email IDs for selectAllPages operations
+  const getAllEmailIds = async (): Promise<string[]> => {
+    const allIds: string[] = [];
+    const fetchQuery = { ...query, limit: 100 };
+    let currentPageNum = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await gmailApi.getAll({ ...fetchQuery, page: currentPageNum });
+      allIds.push(...response.gmails.map((g) => g.id));
+      hasMore = currentPageNum < response.meta.totalPages;
+      currentPageNum++;
+    }
+
+    return allIds;
+  };
+
+  // Handle select all pages
+  const handleSelectAllPages = async () => {
+    setSelectAllPages(true);
+    // Also select all IDs on current page for visual feedback
+    setSelectedIds(new Set(currentPageIds));
+  };
+
+  const handleBulkDelete = async () => {
+    let idsToDelete: string[];
+    if (selectAllPages) {
+      idsToDelete = await getAllEmailIds();
+    } else {
+      idsToDelete = Array.from(selectedIds);
+    }
+    bulkDeleteMutation.mutate(idsToDelete);
+  };
+
+  // Check single email
+  const handleCheckEmail = async (email: Gmail) => {
+    if (!email.appPassword) {
+      toast.error('Email không có App Password');
+      return;
+    }
+
+    setCheckingEmailId(email.id);
+    try {
+      const result = await gmailApi.checkEmail(email.id);
+      queryClient.invalidateQueries({ queryKey: ['gmails'] });
+
+      if (result.success) {
+        toast.success(`${email.email}: Có thể nhận mail - SUCCESS`);
+      } else {
+        toast.error(`${email.email}: ${result.message || 'Không thể nhận mail'} - FAILED`);
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Lỗi khi kiểm tra';
+      toast.error(`${email.email}: ${message}`);
+    } finally {
+      setCheckingEmailId(null);
+    }
+  };
+
+  // Check multiple emails (max 10)
+  const handleBulkCheckEmail = async () => {
+    const selectedCount = selectAllPages ? total : selectedIds.size;
+
+    if (selectedCount === 0) {
+      toast.error('Vui lòng chọn email để kiểm tra');
+      return;
+    }
+
+    if (selectedCount > 10) {
+      toast.error('Chỉ được kiểm tra tối đa 10 email một lúc');
+      return;
+    }
+
+    setBulkCheckingEmails(true);
+    try {
+      let idsToCheck: string[];
+      if (selectAllPages) {
+        idsToCheck = await getAllEmailIds();
+      } else {
+        idsToCheck = Array.from(selectedIds);
+      }
+
+      const result = await gmailApi.checkEmails(idsToCheck);
+      queryClient.invalidateQueries({ queryKey: ['gmails'] });
+      toast.success(`Kiểm tra xong: ${result.summary.success} SUCCESS, ${result.summary.failed} FAILED`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Lỗi khi kiểm tra';
+      toast.error(message);
+    } finally {
+      setBulkCheckingEmails(false);
+    }
   };
 
   const handleExport = async () => {
-    if (selectedIds.size === 0 || !data?.gmails) {
+    const selectedCount = selectAllPages ? total : selectedIds.size;
+
+    if (selectedCount === 0) {
       toast.error('Please select emails to export');
       return;
     }
 
-    const selectedEmails = data.gmails.filter((email) => selectedIds.has(email.id));
-
-    // Check usage status first (does NOT create records)
     try {
-      const result = await gmailApi.checkUsage(Array.from(selectedIds));
+      let idsToExport: string[];
+      let emailsToExport: Gmail[];
+
+      if (selectAllPages) {
+        // Fetch all emails for export
+        idsToExport = await getAllEmailIds();
+        // Need to fetch all email data for export
+        const allEmails: Gmail[] = [];
+        const fetchQuery = { ...query, limit: 100 };
+        let currentPageNum = 1;
+        let hasMore = true;
+        while (hasMore) {
+          const response = await gmailApi.getAll({ ...fetchQuery, page: currentPageNum });
+          allEmails.push(...response.gmails);
+          hasMore = currentPageNum < response.meta.totalPages;
+          currentPageNum++;
+        }
+        emailsToExport = allEmails;
+      } else {
+        idsToExport = Array.from(selectedIds);
+        emailsToExport = data?.gmails.filter((email) => selectedIds.has(email.id)) || [];
+      }
+
+      // Check usage status first (does NOT create records)
+      const result = await gmailApi.checkUsage(idsToExport);
 
       // If some emails are already used, show warning
       if (result.alreadyUsed.length > 0) {
         setAlreadyUsedEmails(result.alreadyUsed);
-        setPendingExportEmails(selectedEmails);
+        setPendingExportEmails(emailsToExport);
         setExportWarningOpen(true);
         return;
       }
 
       // All emails are new, claim and export
-      await gmailApi.claimOwnership(Array.from(selectedIds));
-      await performExport(selectedEmails);
+      await gmailApi.claimOwnership(idsToExport);
+      await performExport(emailsToExport);
 
       // Refresh the list to show updated owners
       queryClient.invalidateQueries({ queryKey: ['gmails'] });
@@ -327,9 +475,6 @@ function EmailsPageContent() {
       deleteMutation.mutate(selectedEmail.id);
     }
   };
-
-  const totalPages = data?.meta.totalPages || 1;
-  const total = data?.meta.total || 0;
 
   return (
     <div className="flex flex-col">
@@ -467,14 +612,29 @@ function EmailsPageContent() {
         </Button>
 
         {/* Selection Actions - shown on the far right when items selected */}
-        {selectedIds.size > 0 && (
+        {(selectedIds.size > 0 || selectAllPages) && (
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-sm font-medium text-blue-700 bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200">
-              {selectedIds.size} selected
+              {selectAllPages ? total : selectedIds.size} selected
             </span>
             <Button variant="ghost" size="sm" onClick={clearSelection} className="h-8">
               <X className="h-4 w-4 mr-1" />
               Clear
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkCheckEmail}
+              disabled={bulkCheckingEmails || (selectAllPages ? total > 10 : selectedIds.size > 10)}
+              className="h-8"
+              title={(selectAllPages ? total > 10 : selectedIds.size > 10) ? 'Tối đa 10 email' : undefined}
+            >
+              {bulkCheckingEmails ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <MailCheck className="h-4 w-4 mr-1" />
+              )}
+              Check Mail {(selectAllPages ? total > 10 : selectedIds.size > 10) && `(max 10)`}
             </Button>
             <Button
               variant="outline"
@@ -504,10 +664,10 @@ function EmailsPageContent() {
             <TableRow>
               <TableHead className="w-[50px] text-center">
                 <Checkbox
-                  checked={allPageSelected}
+                  checked={selectAllPages || allPageSelected}
                   onCheckedChange={handleSelectAllPage}
                   aria-label="Select all"
-                  className={someSelected && !allPageSelected ? 'opacity-50' : ''}
+                  className={someSelected && !allPageSelected && !selectAllPages ? 'opacity-50' : ''}
                 />
               </TableHead>
               <TableHead className="w-[250px] text-center">Email</TableHead>
@@ -532,6 +692,7 @@ function EmailsPageContent() {
                   {sortBy === 'status' && (sortOrder === 'asc' ? ' ↑' : ' ↓')}
                 </button>
               </TableHead>
+              <TableHead className="w-[80px] text-center">Check</TableHead>
               <TableHead className="w-[150px] text-center">
                 <button
                   className="flex items-center gap-1 hover:text-foreground mx-auto"
@@ -552,10 +713,44 @@ function EmailsPageContent() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {/* Select All Pages Banner - inside table for better UX */}
+            {showSelectAllBanner && (
+              <TableRow className="bg-blue-50 hover:bg-blue-50">
+                <TableCell colSpan={11} className="py-2 text-center">
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    {selectAllPages ? (
+                      <>
+                        <span className="text-blue-800">
+                          All <strong>{total}</strong> emails are selected.
+                        </span>
+                        <button
+                          className="text-blue-600 hover:text-blue-800 underline font-medium"
+                          onClick={clearSelection}
+                        >
+                          Clear selection
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-blue-800">
+                          All <strong>{currentPageIds.length}</strong> emails on this page are selected.
+                        </span>
+                        <button
+                          className="text-blue-600 hover:text-blue-800 underline font-medium"
+                          onClick={handleSelectAllPages}
+                        >
+                          Select all {total} emails
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 10 }).map((_, j) => (
+                  {Array.from({ length: 11 }).map((_, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-6 w-full" />
                     </TableCell>
@@ -564,16 +759,16 @@ function EmailsPageContent() {
               ))
             ) : data?.gmails.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   No emails found
                 </TableCell>
               </TableRow>
             ) : (
               data?.gmails.map((email) => (
-                <TableRow key={email.id} className={selectedIds.has(email.id) ? 'bg-blue-50' : ''}>
+                <TableRow key={email.id} className={selectAllPages || selectedIds.has(email.id) ? 'bg-blue-50' : ''}>
                   <TableCell className="text-center">
                     <Checkbox
-                      checked={selectedIds.has(email.id)}
+                      checked={selectAllPages || selectedIds.has(email.id)}
                       onCheckedChange={(checked) => handleSelectOne(email.id, !!checked)}
                       aria-label={`Select ${email.email}`}
                     />
@@ -639,8 +834,24 @@ function EmailsPageContent() {
                       {email.status}
                     </Badge>
                   </TableCell>
+                  <TableCell className="text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleCheckEmail(email)}
+                      disabled={checkingEmailId === email.id || !email.appPassword}
+                      className="h-8 px-2"
+                      title={!email.appPassword ? 'Không có App Password' : 'Kiểm tra email'}
+                    >
+                      {checkingEmailId === email.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MailCheck className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TableCell>
                   <TableCell className="text-center text-sm">
-                    {new Date(email.createdAt).toLocaleDateString('vi-VN')}
+                    {new Date(email.createdAt).toLocaleString('vi-VN')}
                   </TableCell>
                   <TableCell className="text-center">
                     <DropdownMenu>
@@ -650,6 +861,13 @@ function EmailsPageContent() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => claimMutation.mutate(email.id)}
+                          disabled={claimMutation.isPending}
+                        >
+                          <UserCheck className="mr-2 h-4 w-4" />
+                          Claim
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleEdit(email)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Edit
@@ -773,9 +991,9 @@ function EmailsPageContent() {
       <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selectedIds.size} emails?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {selectAllPages ? total : selectedIds.size} emails?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete {selectedIds.size} selected email{selectedIds.size > 1 ? 's' : ''}.
+              This will permanently delete {selectAllPages ? total : selectedIds.size} selected email{(selectAllPages ? total : selectedIds.size) > 1 ? 's' : ''}.
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -786,7 +1004,7 @@ function EmailsPageContent() {
               className="bg-red-600 hover:bg-red-700"
               disabled={bulkDeleteMutation.isPending}
             >
-              {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectedIds.size} emails`}
+              {bulkDeleteMutation.isPending ? 'Deleting...' : `Delete ${selectAllPages ? total : selectedIds.size} emails`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

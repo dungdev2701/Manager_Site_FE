@@ -19,10 +19,19 @@ interface ProxyApiResponse {
   pagination: PaginationMeta;
 }
 
+interface TrashedProxy {
+  ip: string;
+  port: number;
+  id: string;
+}
+
 interface BulkCreateResponse {
   created: number;
   duplicates: number;
+  restored: number;
+  replaced: number;
   errors: string[];
+  trashedProxies: TrashedProxy[];
 }
 
 export interface CheckProgress {
@@ -66,7 +75,8 @@ export const proxyApi = {
   bulkCreate: async (data: BulkCreateProxyRequest): Promise<BulkCreateResponse> => {
     const response = await apiClient.post<ApiSuccessResponse<BulkCreateResponse>>(
       '/proxies/bulk-create',
-      data
+      data,
+      { timeout: 120000 } // 2 minutes for bulk operations
     );
     return response.data.data;
   },
@@ -126,6 +136,56 @@ export const proxyApi = {
   stopCheck: async (): Promise<{ message: string }> => {
     const response = await apiClient.post<ApiSuccessResponse<{ message: string }>>(
       '/proxies/check-stop'
+    );
+    return response.data.data;
+  },
+
+  // ==================== TRASH (Soft Delete) ====================
+  // Get deleted proxies
+  getTrash: async (query?: ProxyQuery): Promise<ProxyListResponse> => {
+    const response = await apiClient.get<ApiSuccessResponse<ProxyApiResponse>>(
+      '/proxies/trash',
+      { params: query }
+    );
+    return {
+      proxies: response.data.data.data,
+      meta: response.data.data.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 },
+    };
+  },
+
+  // Restore single proxy
+  restore: async (id: string): Promise<Proxy> => {
+    const response = await apiClient.post<ApiSuccessResponse<Proxy>>(`/proxies/restore/${id}`);
+    return response.data.data;
+  },
+
+  // Bulk restore proxies
+  bulkRestore: async (ids: string[]): Promise<{ restored: number }> => {
+    const response = await apiClient.post<ApiSuccessResponse<{ restored: number }>>(
+      '/proxies/bulk-restore',
+      { ids }
+    );
+    return response.data.data;
+  },
+
+  // Permanently delete proxy
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/proxies/permanent-delete/${id}`);
+  },
+
+  // Bulk permanent delete proxies
+  bulkPermanentDelete: async (ids: string[]): Promise<{ deleted: number }> => {
+    const response = await apiClient.post<ApiSuccessResponse<{ deleted: number }>>(
+      '/proxies/bulk-permanent-delete',
+      { ids }
+    );
+    return response.data.data;
+  },
+
+  // Empty trash
+  emptyTrash: async (): Promise<{ deleted: number }> => {
+    const response = await apiClient.post<ApiSuccessResponse<{ deleted: number }>>(
+      '/proxies/empty-trash'
     );
     return response.data.data;
   },

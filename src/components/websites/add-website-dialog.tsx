@@ -46,11 +46,12 @@ const TYPE_OPTIONS = [
   { value: 'PODCAST' as const, label: 'Podcast' },
   { value: 'SOCIAL' as const, label: 'Social' },
   { value: 'GG_STACKING' as const, label: 'GG Stacking' },
+  { value: 'ENTITY_SOCIAL' as const, label: 'Entity Social' },
 ];
 
 const singleWebsiteSchema = z.object({
   domain: z.string().min(1, 'Domain is required'),
-  types: z.array(z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL', 'GG_STACKING'])).optional(),
+  types: z.array(z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL', 'GG_STACKING', 'ENTITY_SOCIAL'])).optional(),
   notes: z.string().max(5000).optional(),
   // Metrics fields - use string for form input, convert when submitting
   traffic: z.string().optional(),
@@ -73,7 +74,7 @@ const singleWebsiteSchema = z.object({
 
 const bulkWebsiteSchema = z.object({
   domains: z.string().min(1, 'At least one domain is required'),
-  types: z.array(z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL', 'GG_STACKING'])).optional(),
+  types: z.array(z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL', 'GG_STACKING', 'ENTITY_SOCIAL'])).optional(),
 });
 
 type SingleWebsiteFormValues = z.infer<typeof singleWebsiteSchema>;
@@ -142,6 +143,9 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
       if (result.created > 0) {
         messages.push(`${result.created} websites created`);
       }
+      if (result.updated > 0) {
+        messages.push(`${result.updated} websites updated (types merged)`);
+      }
       if (result.duplicates.length > 0) {
         messages.push(`${result.duplicates.length} duplicates skipped`);
       }
@@ -149,7 +153,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
         messages.push(`${result.invalid.length} invalid domains`);
       }
 
-      if (result.created > 0) {
+      if (result.created > 0 || result.updated > 0) {
         toast.success(messages.join(', '));
       } else {
         toast.warning(messages.join(', '));
@@ -175,6 +179,9 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
       if (result.created > 0) {
         messages.push(`${result.created} websites created`);
       }
+      if (result.updated > 0) {
+        messages.push(`${result.updated} websites updated (types merged)`);
+      }
       if (result.duplicates.length > 0) {
         messages.push(`${result.duplicates.length} duplicates skipped`);
       }
@@ -182,7 +189,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
         messages.push(`${result.invalid.length} invalid domains`);
       }
 
-      if (result.created > 0) {
+      if (result.created > 0 || result.updated > 0) {
         toast.success(messages.join(', '));
       } else {
         toast.warning(messages.join(', '));

@@ -23,6 +23,7 @@ export enum WebsiteType {
   PODCAST = 'PODCAST',
   SOCIAL = 'SOCIAL',
   GG_STACKING = 'GG_STACKING',
+  ENTITY_SOCIAL = 'ENTITY_SOCIAL',
 }
 
 export enum PeriodType {
@@ -432,6 +433,7 @@ export interface Proxy {
   note?: string | null;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
 }
 
 export interface ProxyQuery extends PaginationQuery, SearchQuery {
@@ -460,6 +462,7 @@ export interface BulkCreateProxyRequest {
   type?: ProxyType;
   protocol?: ProxyProtocol;
   services?: ProxyServiceType[];
+  handleTrashed?: 'restore' | 'replace'; // How to handle proxies in trash
 }
 
 export interface UpdateProxyRequest {

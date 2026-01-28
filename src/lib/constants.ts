@@ -39,6 +39,7 @@ export const TYPE_COLORS: Record<WebsiteType, string> = {
   [WebsiteType.PODCAST]: '#ec4899',
   [WebsiteType.SOCIAL]: '#06b6d4',
   [WebsiteType.GG_STACKING]: '#f59e0b',
+  [WebsiteType.ENTITY_SOCIAL]: '#10b981',
 };
 
 export const TYPE_LABELS: Record<WebsiteType, string> = {
@@ -47,6 +48,7 @@ export const TYPE_LABELS: Record<WebsiteType, string> = {
   [WebsiteType.PODCAST]: 'Podcast',
   [WebsiteType.SOCIAL]: 'Social',
   [WebsiteType.GG_STACKING]: 'GG Stacking',
+  [WebsiteType.ENTITY_SOCIAL]: 'Entity Social',
 };
 
 // Tailwind CSS classes for type badges
@@ -56,6 +58,7 @@ export const TYPE_BADGE_CLASSES: Record<WebsiteType, string> = {
   [WebsiteType.PODCAST]: 'bg-pink-100 text-pink-800 hover:bg-pink-200',
   [WebsiteType.SOCIAL]: 'bg-cyan-100 text-cyan-800 hover:bg-cyan-200',
   [WebsiteType.GG_STACKING]: 'bg-amber-100 text-amber-800 hover:bg-amber-200',
+  [WebsiteType.ENTITY_SOCIAL]: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200',
 };
 
 // ==================== PERIOD OPTIONS ====================

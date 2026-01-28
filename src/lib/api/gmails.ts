@@ -37,6 +37,12 @@ export interface ClaimOwnershipResponse {
   newOwnerAssigned: number;
 }
 
+export interface CheckEmailAppPasswordResponse {
+  success: boolean;
+  message: string;
+  canReceive?: boolean;
+}
+
 export const gmailApi = {
   getAll: async (query?: GmailQuery): Promise<GmailListResponse> => {
     const response = await apiClient.get<ApiSuccessResponse<GmailApiResponse>>(
@@ -99,6 +105,47 @@ export const gmailApi = {
       '/gmails/claim-ownership',
       { ids }
     );
+    return response.data.data;
+  },
+
+  // Check single email can receive mail (using IMAP)
+  checkEmail: async (id: string): Promise<CheckEmailAppPasswordResponse> => {
+    const response = await apiClient.post<ApiSuccessResponse<CheckEmailAppPasswordResponse>>(
+      '/gmails/check-email',
+      { id }
+    );
+    return response.data.data;
+  },
+
+  // Check multiple emails can receive mail (max 10)
+  checkEmails: async (ids: string[]): Promise<{
+    results: Array<{
+      id: string;
+      email: string;
+      success: boolean;
+      message: string;
+      status: string;
+    }>;
+    summary: {
+      total: number;
+      success: number;
+      failed: number;
+    };
+  }> => {
+    const response = await apiClient.post<ApiSuccessResponse<{
+      results: Array<{
+        id: string;
+        email: string;
+        success: boolean;
+        message: string;
+        status: string;
+      }>;
+      summary: {
+        total: number;
+        success: number;
+        failed: number;
+      };
+    }>>('/gmails/check-emails', { ids });
     return response.data.data;
   },
 };

@@ -92,6 +92,7 @@ const TYPE_OPTIONS = [
   { value: WebsiteType.PODCAST, label: 'Podcast' },
   { value: WebsiteType.SOCIAL, label: 'Social' },
   { value: WebsiteType.GG_STACKING, label: 'GG Stacking' },
+  { value: WebsiteType.ENTITY_SOCIAL, label: 'Entity Social' },
 ];
 
 export function EditWebsiteDialog({
@@ -147,13 +148,18 @@ export function EditWebsiteDialog({
   const updateMutation = useMutation({
     mutationFn: (data: { id: string; payload: Parameters<typeof websiteApi.update>[1] }) =>
       websiteApi.update(data.id, data.payload),
+    onMutate: () => {
+      // Close dialog immediately for better UX
+      onOpenChange(false);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['websites'] });
       toast.success('Website updated successfully');
-      onOpenChange(false);
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update website');
+      // Reopen dialog on error so user can retry
+      onOpenChange(true);
     },
   });
 

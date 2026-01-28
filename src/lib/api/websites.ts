@@ -66,10 +66,11 @@ export const websiteApi = {
 
   bulkCreate: async (
     data: { domains: string[]; types?: WebsiteType[] }
-  ): Promise<{ created: number; duplicates: string[]; invalid: string[]; total: number }> => {
+  ): Promise<{ created: number; updated: number; duplicates: string[]; invalid: string[]; total: number }> => {
     const response = await apiClient.post<
       ApiSuccessResponse<{
         created: number;
+        updated: number;
         duplicates: string[];
         invalid: string[];
         total: number;
@@ -80,10 +81,11 @@ export const websiteApi = {
 
   bulkCreateWithMetrics: async (
     websites: BulkWebsiteItem[]
-  ): Promise<{ created: number; duplicates: string[]; invalid: string[]; total: number }> => {
+  ): Promise<{ created: number; updated: number; duplicates: string[]; invalid: string[]; total: number }> => {
     const response = await apiClient.post<
       ApiSuccessResponse<{
         created: number;
+        updated: number;
         duplicates: string[];
         invalid: string[];
         total: number;
