@@ -476,3 +476,79 @@ export interface UpdateProxyRequest {
   status?: ProxyStatus;
   note?: string | null;
 }
+
+// ==================== SERVICE REQUEST ====================
+export enum ServiceType {
+  ENTITY = 'ENTITY',
+  BLOG2 = 'BLOG2',
+  PODCAST = 'PODCAST',
+  SOCIAL = 'SOCIAL',
+  GG_STACKING = 'GG_STACKING',
+}
+
+export enum RequestStatus {
+  DRAFT = 'DRAFT',
+  NEW = 'NEW',
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  CONNECTING = 'CONNECTING',
+  COMPLETED = 'COMPLETED',
+  CANCEL = 'CANCEL',
+}
+
+export enum DomainSelection {
+  LIKEPION = 'LIKEPION',
+  LINKSBUFF = 'LINKSBUFF',
+  ALL = 'ALL',
+  CUSTOM = 'CUSTOM',
+}
+
+export interface ServiceRequest {
+  id: string;
+  // External user (từ website KH)
+  externalUserId: string;
+  externalUserEmail?: string | null;
+  externalUserName?: string | null;
+  // Internal assigned user (nhân viên nội bộ)
+  assignedUserId?: string | null;
+  assignedUser?: { id: string; email: string; name: string } | null;
+  // Service data
+  serviceType: ServiceType;
+  serviceGroupId?: string | null;
+  externalId?: string | null;
+  idTool?: string | null;
+  name?: string | null;
+  typeRequest?: string | null;
+  target?: string | null;
+  auctionPrice?: number | null;
+  status: RequestStatus;
+  config?: Record<string, unknown> | null;
+  totalLinks: number;
+  completedLinks: number;
+  failedLinks: number;
+  progressPercent: number;
+  domains: DomainSelection;
+  retryCount: number;
+  runCount: number;
+  checkedAt?: string | null;
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  batches?: Array<{
+    id: string;
+    batchNumber: number;
+    targetCount: number;
+    allocatedCount: number;
+    status: string;
+    createdAt: string;
+  }>;
+}
+
+export interface ServiceRequestQuery extends PaginationQuery, SearchQuery {
+  serviceType?: ServiceType;
+  status?: RequestStatus;
+  externalUserId?: string;
+  domains?: DomainSelection;
+  sortBy?: 'createdAt' | 'updatedAt' | 'status' | 'serviceType' | 'name' | 'auctionPrice';
+  sortOrder?: 'asc' | 'desc';
+}

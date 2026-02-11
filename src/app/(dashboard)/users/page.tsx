@@ -98,6 +98,8 @@ export default function UsersPage() {
         role: roleFilter !== 'all' ? roleFilter : undefined,
         isActive: statusFilter === 'all' ? undefined : statusFilter === 'active',
       }),
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    refetchIntervalInBackground: false, // Only when tab is focused
   });
 
   // Mutations

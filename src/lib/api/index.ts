@@ -6,6 +6,7 @@ export { statisticsApi } from './statistics';
 export { gmailApi } from './gmails';
 export { toolApi } from './tools';
 export { proxyApi } from './proxies';
+export { serviceRequestApi } from './service-requests';
 export type { BulkWebsiteItem } from './websites';
 export type { GmailListResponse } from './gmails';
 export type { ToolListResponse } from './tools';

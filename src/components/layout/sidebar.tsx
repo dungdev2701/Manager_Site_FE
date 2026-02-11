@@ -14,6 +14,7 @@ import {
   Mail,
   Wrench,
   Network,
+  Link2,
 } from 'lucide-react';
 
 const LikepionLogo = () => (
@@ -41,6 +42,11 @@ const navItems: NavItem[] = [
     title: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
+  },
+  {
+    title: 'Service Backlinks',
+    href: '/service-backlinks',
+    icon: Link2,
   },
   {
     title: 'Websites',

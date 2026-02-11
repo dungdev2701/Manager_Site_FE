@@ -20,6 +20,7 @@ import {
   UserCheck,
   MailCheck,
   Loader2,
+  Key,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -75,6 +76,7 @@ import { Gmail, GmailStatus, GmailQuery } from '@/types';
 import { useDebounce } from '@/hooks';
 import { AddEmailDialog } from '@/components/emails/add-email-dialog';
 import { EditEmailDialog } from '@/components/emails/edit-email-dialog';
+import { TwoFADialog } from '@/components/emails/twofa-dialog';
 
 const STATUS_BADGE_CLASSES = {
   SUCCESS: 'bg-green-100 text-green-800 border-green-200',
@@ -98,6 +100,7 @@ function EmailsPageContent() {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [twoFADialogOpen, setTwoFADialogOpen] = useState(false);
   const [selectedEmail, setSelectedEmail] = useState<Gmail | null>(null);
 
   // Selection
@@ -151,6 +154,8 @@ function EmailsPageContent() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['gmails', query],
     queryFn: () => gmailApi.getAll(query),
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    refetchIntervalInBackground: false, // Only when tab is focused
   });
 
   const deleteMutation = useMutation({
@@ -468,6 +473,15 @@ function EmailsPageContent() {
   const handleDelete = (email: Gmail) => {
     setSelectedEmail(email);
     setDeleteDialogOpen(true);
+  };
+
+  const handleGet2FA = (email: Gmail) => {
+    if (!email.twoFA) {
+      toast.error('Email này không có secret key 2FA');
+      return;
+    }
+    setSelectedEmail(email);
+    setTwoFADialogOpen(true);
   };
 
   const confirmDelete = () => {
@@ -862,6 +876,13 @@ function EmailsPageContent() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem
+                          onClick={() => handleGet2FA(email)}
+                          disabled={!email.twoFA}
+                        >
+                          <Key className="mr-2 h-4 w-4" />
+                          Get 2FA
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
                           onClick={() => claimMutation.mutate(email.id)}
                           disabled={claimMutation.isPending}
                         >
@@ -963,6 +984,12 @@ function EmailsPageContent() {
         email={selectedEmail}
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
+      />
+      <TwoFADialog
+        open={twoFADialogOpen}
+        onOpenChange={setTwoFADialogOpen}
+        email={selectedEmail?.email || ''}
+        secret={selectedEmail?.twoFA || ''}
       />
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

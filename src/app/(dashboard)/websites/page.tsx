@@ -434,6 +434,8 @@ function WebsitesPageContent() {
     queryKey: ['websites', user?.id, debouncedSearch, page, pageSize, filters],
     queryFn: () => websiteApi.getAll({ search: debouncedSearch, page, limit: pageSize, ...filters }),
     enabled: !!user, // Only fetch when user is available
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    refetchIntervalInBackground: false, // Only when tab is focused
   });
 
   // Update URL when debounced search changes

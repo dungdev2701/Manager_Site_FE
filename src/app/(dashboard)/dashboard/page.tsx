@@ -78,6 +78,8 @@ export default function DashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['websites', 'all'],
     queryFn: () => websiteApi.getAll({ limit: 10000 }),
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    refetchIntervalInBackground: false, // Only when tab is focused
   });
 
   const statsData = useMemo(() => {

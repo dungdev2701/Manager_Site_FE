@@ -163,6 +163,8 @@ function ToolsPageContent() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['tools', query],
     queryFn: () => toolApi.getAll(query),
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    refetchIntervalInBackground: false, // Only when tab is focused
   });
 
   const deleteMutation = useMutation({

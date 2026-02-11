@@ -202,6 +202,8 @@ function ProxiesPageContent() {
     queryKey: ['proxies', query],
     queryFn: () => proxyApi.getAll(query),
     enabled: !isTrashView,
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    refetchIntervalInBackground: false, // Only when tab is focused
   });
 
   // Trash query
@@ -209,6 +211,8 @@ function ProxiesPageContent() {
     queryKey: ['proxies-trash', query],
     queryFn: () => proxyApi.getTrash(query),
     enabled: isTrashView,
+    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
+    refetchIntervalInBackground: false, // Only when tab is focused
   });
 
   const deleteMutation = useMutation({
