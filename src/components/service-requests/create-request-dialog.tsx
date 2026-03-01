@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useForm, UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Upload, X, AlertCircle } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,8 +37,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { serviceRequestApi } from '@/lib/api';
-import { ServiceType, DomainSelection } from '@/types';
+import { serviceRequestApi, websiteApi } from '@/lib/api';
+import { ServiceType, DomainSelection, RequestPriority } from '@/types';
 
 // ==================== Config Zod Schemas (mirror backend) ====================
 
@@ -127,6 +128,7 @@ const createRequestSchema = z.object({
   name: z.string().max(255).optional(),
   domains: z.nativeEnum(DomainSelection),
   auctionPrice: z.number().min(0).optional(),
+  priority: z.nativeEnum(RequestPriority).default(RequestPriority.NORMAL),
   target: z.string().optional(),
   typeRequest: z.string().max(50).optional(),
   externalId: z.string().optional(),
@@ -217,7 +219,194 @@ const serviceTypeLabels: Record<ServiceType, string> = {
 
 // ==================== Config Field Components ====================
 
+interface FixedSitesFieldProps {
+  value: string;
+  onChange: (v: string) => void;
+  serviceType: string;
+  onFiltered: (count: number) => void;
+}
+
+function FixedSitesField({ value, onChange, serviceType, onFiltered }: FixedSitesFieldProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isFiltering, setIsFiltering] = useState(false);
+  const [unmatchedDomains, setUnmatchedDomains] = useState<string[]>([]);
+  const domainCount = value.split(';').filter((d) => d.trim()).length;
+
+  const filterDomains = useCallback(async (domains: string[]) => {
+    if (domains.length === 0) {
+      onChange('');
+      onFiltered(0);
+      setUnmatchedDomains([]);
+      return;
+    }
+
+    setIsFiltering(true);
+    try {
+      const result = await websiteApi.filterDomains(domains, serviceType);
+      const filtered = result.matched.join(';');
+      onChange(filtered);
+      onFiltered(result.matched.length);
+      setUnmatchedDomains(result.unmatched);
+
+      if (result.matched.length === 0) {
+        toast.error('Không có domain nào trùng với hệ thống RUNNING');
+      } else {
+        toast.success(
+          `${result.matched.length} domain trùng khớp` +
+          (result.unmatched.length > 0 ? `, ${result.unmatched.length} domain bị loại` : '')
+        );
+      }
+    } catch {
+      toast.error('Lỗi khi lọc domains. Vui lòng thử lại.');
+    } finally {
+      setIsFiltering(false);
+    }
+  }, [serviceType, onChange, onFiltered]);
+
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const fileName = file.name.toLowerCase();
+
+    try {
+      let domains: string[] = [];
+
+      if (fileName.endsWith('.txt') || fileName.endsWith('.csv')) {
+        const text = await file.text();
+        domains = text
+          .split(/[\n;,]+/)
+          .map((d) => d.trim())
+          .filter((d) => d.length > 0);
+      } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1 }) as unknown[][];
+        domains = rows
+          .map((row) => String(row[0] ?? '').trim())
+          .filter((d) => d.length > 0);
+      } else {
+        toast.error('File không hỗ trợ. Dùng .txt, .csv, hoặc .xlsx');
+        return;
+      }
+
+      if (domains.length === 0) {
+        toast.error('Không tìm thấy domain nào trong file');
+        return;
+      }
+
+      // Lọc ngay khi upload
+      await filterDomains(domains);
+    } catch {
+      toast.error('Lỗi đọc file. Vui lòng kiểm tra lại định dạng.');
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [filterDomains]);
+
+  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const domains = e.target.value
+      .split(/[\n;,]+/)
+      .map((d) => d.trim())
+      .filter((d) => d.length > 0);
+    // Chỉ cập nhật text, chưa filter (filter khi blur)
+    onChange(domains.join(';'));
+    setUnmatchedDomains([]);
+  }, [onChange]);
+
+  const handleBlur = useCallback(async () => {
+    const domains = value.split(';').map((d) => d.trim()).filter((d) => d.length > 0);
+    if (domains.length > 0) {
+      await filterDomains(domains);
+    }
+  }, [value, filterDomains]);
+
+  const handleClear = useCallback(() => {
+    onChange('');
+    onFiltered(0);
+    setUnmatchedDomains([]);
+  }, [onChange, onFiltered]);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <FormLabel>Fixed Sites</FormLabel>
+        <div className="flex items-center gap-2">
+          {isFiltering && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {domainCount > 0 && (
+            <span className="text-xs font-medium text-green-600">{domainCount} domains (matched)</span>
+          )}
+        </div>
+      </div>
+      <Textarea
+        placeholder="Nhập domain, mỗi dòng 1 domain hoặc ngăn cách bằng dấu ; (tự động lọc khi blur)"
+        rows={3}
+        value={value.replace(/;/g, '\n')}
+        onChange={handleTextChange}
+        onBlur={handleBlur}
+        className="text-sm font-mono"
+        disabled={isFiltering}
+      />
+      {unmatchedDomains.length > 0 && (
+        <div className="flex items-start gap-1.5 text-xs text-yellow-700">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>
+            Có {unmatchedDomains.length} domain không được hỗ trợ: {unmatchedDomains.join(', ')}
+          </span>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".txt,.csv,.xlsx,.xls"
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          className="h-7 text-xs"
+          disabled={isFiltering}
+        >
+          <Upload className="h-3 w-3 mr-1" />
+          Upload file (.txt, .csv, .xlsx)
+        </Button>
+        {value && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleClear}
+            className="h-7 text-xs text-muted-foreground"
+            disabled={isFiltering}
+          >
+            <X className="h-3 w-3 mr-1" />
+            Clear
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EntityConfigFields({ form }: { form: FormAny }) {
+  const fixedSites: string = form.watch('config.fixedSites') ?? '';
+  const hasFixedSites = fixedSites.split(';').filter((d: string) => d.trim()).length > 0;
+
+  const handleFixedSitesFiltered = useCallback((count: number) => {
+    if (count > 0) {
+      form.setValue('config.entityLimit', count);
+      form.setValue('target', String(count));
+    } else {
+      form.setValue('config.entityLimit', 1);
+      form.setValue('target', '');
+    }
+  }, [form]);
+
   return (
     <div className="space-y-4">
       <h4 className="text-sm font-semibold">Entity Config</h4>
@@ -245,10 +434,12 @@ function EntityConfigFields({ form }: { form: FormAny }) {
         )} />
         <FormField control={form.control} name="config.entityLimit" render={({ field }) => (
           <FormItem>
-            <FormLabel>Entity Limit *</FormLabel>
+            <FormLabel>Entity Limit *{hasFixedSites ? ' (auto)' : ''}</FormLabel>
             <FormControl>
               <Input type="number" min={1} {...field} value={field.value ?? 1}
-                onChange={(e) => field.onChange(e.target.valueAsNumber || 1)} />
+                onChange={(e) => field.onChange(e.target.valueAsNumber || 1)}
+                disabled={hasFixedSites}
+                className={hasFixedSites ? 'bg-muted' : ''} />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -263,8 +454,14 @@ function EntityConfigFields({ form }: { form: FormAny }) {
       )} />
       <FormField control={form.control} name="config.fixedSites" render={({ field }) => (
         <FormItem>
-          <FormLabel>Fixed Sites</FormLabel>
-          <FormControl><Input {...field} value={field.value ?? ''} /></FormControl>
+          <FormControl>
+            <FixedSitesField
+              value={field.value ?? ''}
+              onChange={field.onChange}
+              serviceType={form.watch('serviceType')}
+              onFiltered={handleFixedSitesFiltered}
+            />
+          </FormControl>
           <FormMessage />
         </FormItem>
       )} />
@@ -736,7 +933,8 @@ export function CreateRequestDialog({ open, onOpenChange }: CreateRequestDialogP
       externalUserName: '',
       name: '',
       domains: DomainSelection.LIKEPION,
-      auctionPrice: undefined,
+      auctionPrice: 30,
+      priority: RequestPriority.NORMAL,
       target: '',
       typeRequest: '',
       externalId: '',
@@ -747,10 +945,19 @@ export function CreateRequestDialog({ open, onOpenChange }: CreateRequestDialogP
   });
 
   const watchedServiceType = form.watch('serviceType');
+  const watchedFixedSites: string = form.watch('config.fixedSites') ?? '';
+  const hasFixedSites = watchedServiceType === ServiceType.ENTITY &&
+    watchedFixedSites.split(';').filter((d: string) => d.trim()).length > 0;
 
   useEffect(() => {
     if (prevServiceTypeRef.current !== null && prevServiceTypeRef.current !== watchedServiceType) {
       form.setValue('config', getDefaultConfig(watchedServiceType), { shouldValidate: false });
+      // ENTITY mặc định auctionPrice = 30
+      if (watchedServiceType === ServiceType.ENTITY) {
+        form.setValue('auctionPrice', 30);
+      } else {
+        form.setValue('auctionPrice', undefined);
+      }
     }
     prevServiceTypeRef.current = watchedServiceType;
   }, [watchedServiceType, form]);
@@ -781,6 +988,7 @@ export function CreateRequestDialog({ open, onOpenChange }: CreateRequestDialogP
     if (data.externalUserName) payload.externalUserName = data.externalUserName;
     if (data.name) payload.name = data.name;
     if (data.auctionPrice !== undefined) payload.auctionPrice = data.auctionPrice;
+    if (data.priority) payload.priority = data.priority;
     if (data.target) payload.target = data.target;
     if (data.typeRequest) payload.typeRequest = data.typeRequest;
     if (data.externalId) payload.externalId = data.externalId;
@@ -872,11 +1080,41 @@ export function CreateRequestDialog({ open, onOpenChange }: CreateRequestDialogP
                 <FormItem>
                   <FormLabel>Auction Price</FormLabel>
                   <FormControl>
-                    <Input type="number" min={0} placeholder="0"
+                    <Input type="number"
+                      min={watchedServiceType === ServiceType.ENTITY ? 30 : 0}
+                      placeholder={watchedServiceType === ServiceType.ENTITY ? '30' : '0'}
                       value={field.value ?? ''}
                       onChange={(e) => field.onChange(e.target.value ? e.target.valueAsNumber : undefined)}
-                      onBlur={field.onBlur} name={field.name} ref={field.ref} />
+                      onBlur={() => {
+                        if (watchedServiceType === ServiceType.ENTITY && (field.value === undefined || field.value < 30)) {
+                          field.onChange(30);
+                        }
+                        field.onBlur();
+                      }}
+                      name={field.name} ref={field.ref} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField control={form.control} name="priority" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Priority</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select priority" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value={RequestPriority.LOW}>Low</SelectItem>
+                      <SelectItem value={RequestPriority.NORMAL}>Normal</SelectItem>
+                      <SelectItem value={RequestPriority.HIGH}>High</SelectItem>
+                      <SelectItem value={RequestPriority.URGENT}>Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -885,8 +1123,10 @@ export function CreateRequestDialog({ open, onOpenChange }: CreateRequestDialogP
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="target" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Target</FormLabel>
-                  <FormControl><Input {...field} /></FormControl>
+                  <FormLabel>Target{hasFixedSites ? ' (auto)' : ''}</FormLabel>
+                  <FormControl>
+                    <Input {...field} disabled={hasFixedSites} className={hasFixedSites ? 'bg-muted' : ''} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )} />

@@ -490,6 +490,31 @@ function WebsitesPageContent() {
     },
   });
 
+  // Bulk update status mutation
+  const bulkUpdateStatusMutation = useMutation({
+    mutationFn: ({ ids, status }: { ids: string[]; status: WebsiteStatus }) =>
+      websiteApi.bulkUpdateStatus(ids, status),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['websites'] });
+      toast.success(`Updated ${variables.ids.length} websites to ${STATUS_LABELS[variables.status]}`);
+      clearSelection();
+    },
+    onError: () => {
+      toast.error('Failed to update status');
+    },
+  });
+
+  const handleBulkUpdateStatus = useCallback(
+    (status: WebsiteStatus) => {
+      if (selectedIds.size === 0) return;
+      bulkUpdateStatusMutation.mutate({
+        ids: Array.from(selectedIds),
+        status,
+      });
+    },
+    [selectedIds, bulkUpdateStatusMutation]
+  );
+
   // Inline update mutation
   const inlineUpdateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Parameters<typeof websiteApi.update>[1] }) =>
@@ -1340,6 +1365,25 @@ function WebsitesPageContent() {
               <X className="h-4 w-4 mr-1" />
               Clear
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={bulkUpdateStatusMutation.isPending}>
+                  {bulkUpdateStatusMutation.isPending ? 'Updating...' : 'Update Status'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {Object.values(WebsiteStatus).map((status) => (
+                  <DropdownMenuItem
+                    key={status}
+                    onClick={() => handleBulkUpdateStatus(status)}
+                  >
+                    <Badge variant="secondary" className={`${STATUS_BADGE_CLASSES[status]} mr-2`}>
+                      {STATUS_LABELS[status]}
+                    </Badge>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="default" size="sm" onClick={handleExport} disabled={isExporting}>
               <Download className="h-4 w-4 mr-1" />
               {isExporting ? 'Exporting...' : 'Export'}

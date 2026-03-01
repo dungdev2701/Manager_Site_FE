@@ -15,6 +15,7 @@ import {
   Wrench,
   Network,
   Link2,
+  Settings,
 } from 'lucide-react';
 
 const LikepionLogo = () => (
@@ -77,6 +78,12 @@ const navItems: NavItem[] = [
     title: 'Users',
     href: '/users',
     icon: Users,
+    roles: [Role.ADMIN],
+  },
+  {
+    title: 'Settings',
+    href: '/settings',
+    icon: Settings,
     roles: [Role.ADMIN],
   },
 ];

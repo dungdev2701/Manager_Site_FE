@@ -496,6 +496,13 @@ export enum RequestStatus {
   CANCEL = 'CANCEL',
 }
 
+export enum RequestPriority {
+  LOW = 'LOW',
+  NORMAL = 'NORMAL',
+  HIGH = 'HIGH',
+  URGENT = 'URGENT',
+}
+
 export enum DomainSelection {
   LIKEPION = 'LIKEPION',
   LINKSBUFF = 'LINKSBUFF',
@@ -521,12 +528,14 @@ export interface ServiceRequest {
   typeRequest?: string | null;
   target?: string | null;
   auctionPrice?: number | null;
+  priority: RequestPriority;
   status: RequestStatus;
   config?: Record<string, unknown> | null;
   totalLinks: number;
   completedLinks: number;
   failedLinks: number;
   progressPercent: number;
+  profileCount?: number;
   domains: DomainSelection;
   retryCount: number;
   runCount: number;
@@ -547,8 +556,22 @@ export interface ServiceRequest {
 export interface ServiceRequestQuery extends PaginationQuery, SearchQuery {
   serviceType?: ServiceType;
   status?: RequestStatus;
+  priority?: RequestPriority;
   externalUserId?: string;
   domains?: DomainSelection;
-  sortBy?: 'createdAt' | 'updatedAt' | 'status' | 'serviceType' | 'name' | 'auctionPrice';
+  sortBy?: 'createdAt' | 'updatedAt' | 'status' | 'serviceType' | 'name' | 'auctionPrice' | 'priority';
   sortOrder?: 'asc' | 'desc';
+}
+
+// ==================== SYSTEM CONFIG ====================
+export type ConfigType = 'STRING' | 'NUMBER' | 'BOOLEAN' | 'JSON';
+
+export interface SystemConfig {
+  key: string;
+  value: string;
+  type: ConfigType;
+  description?: string | null;
+  parsedValue: unknown;
+  updatedAt: string;
+  updatedBy?: string | null;
 }

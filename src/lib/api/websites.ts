@@ -100,8 +100,8 @@ export const websiteApi = {
     await apiClient.delete('/websites/bulk', { data: { ids } });
   },
 
-  bulkUpdateStatus: async (ids: string[], status: string): Promise<Website[]> => {
-    const response = await apiClient.patch<ApiSuccessResponse<Website[]>>('/websites/bulk/status', {
+  bulkUpdateStatus: async (ids: string[], status: string): Promise<{ updated: number }> => {
+    const response = await apiClient.patch<ApiSuccessResponse<{ updated: number }>>('/websites/bulk/status', {
       ids,
       status,
     });
@@ -148,6 +148,17 @@ export const websiteApi = {
       '/websites/by-ids',
       { ids }
     );
+    return response.data.data;
+  },
+
+  // Filter domains against RUNNING websites
+  filterDomains: async (
+    domains: string[],
+    serviceType: string
+  ): Promise<{ matched: string[]; unmatched: string[] }> => {
+    const response = await apiClient.post<
+      ApiSuccessResponse<{ matched: string[]; unmatched: string[] }>
+    >('/websites/filter-domains', { domains, serviceType });
     return response.data.data;
   },
 

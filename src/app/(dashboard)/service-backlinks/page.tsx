@@ -70,6 +70,7 @@ import {
   ServiceRequest,
   ServiceType,
   RequestStatus,
+  RequestPriority,
   Role,
 } from '@/types';
 
@@ -81,6 +82,20 @@ const statusColors: Record<RequestStatus, string> = {
   [RequestStatus.CONNECTING]: 'bg-purple-100 text-purple-800',
   [RequestStatus.COMPLETED]: 'bg-green-100 text-green-800',
   [RequestStatus.CANCEL]: 'bg-red-100 text-red-800',
+};
+
+const priorityColors: Record<RequestPriority, string> = {
+  [RequestPriority.LOW]: 'bg-gray-100 text-gray-800',
+  [RequestPriority.NORMAL]: 'bg-blue-100 text-blue-800',
+  [RequestPriority.HIGH]: 'bg-orange-100 text-orange-800',
+  [RequestPriority.URGENT]: 'bg-red-100 text-red-800',
+};
+
+const priorityLabels: Record<RequestPriority, string> = {
+  [RequestPriority.LOW]: 'Low',
+  [RequestPriority.NORMAL]: 'Normal',
+  [RequestPriority.HIGH]: 'High',
+  [RequestPriority.URGENT]: 'Urgent',
 };
 
 const serviceTypeLabels: Record<ServiceType, string> = {
@@ -160,7 +175,7 @@ function getTargetFromRequest(req: ServiceRequest): number {
   return req.totalLinks;
 }
 
-const COLUMN_COUNT = 11;
+const COLUMN_COUNT = 12;
 
 export default function ServiceBacklinksPage() {
   const queryClient = useQueryClient();
@@ -170,6 +185,7 @@ export default function ServiceBacklinksPage() {
   const [search, setSearch] = useState('');
   const [serviceTypeFilter, setServiceTypeFilter] = useState<ServiceType | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<RequestStatus | 'all'>('all');
+  const [priorityFilter, setPriorityFilter] = useState<RequestPriority | 'all'>('all');
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
 
@@ -190,7 +206,7 @@ export default function ServiceBacklinksPage() {
 
   // Fetch service requests
   const { data, isLoading, error } = useQuery({
-    queryKey: ['service-requests', page, limit, search, serviceTypeFilter, statusFilter],
+    queryKey: ['service-requests', page, limit, search, serviceTypeFilter, statusFilter, priorityFilter],
     queryFn: () =>
       serviceRequestApi.getAll({
         page,
@@ -198,6 +214,7 @@ export default function ServiceBacklinksPage() {
         search: search || undefined,
         serviceType: serviceTypeFilter !== 'all' ? serviceTypeFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
+        priority: priorityFilter !== 'all' ? priorityFilter : undefined,
         sortBy: 'createdAt',
         sortOrder: 'desc',
       }),
@@ -346,6 +363,25 @@ export default function ServiceBacklinksPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select
+          value={priorityFilter}
+          onValueChange={(value) => {
+            setPriorityFilter(value as RequestPriority | 'all');
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-[160px] bg-background">
+            <SelectValue placeholder="All Priority" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Priority</SelectItem>
+            {Object.values(RequestPriority).map((p) => (
+              <SelectItem key={p} value={p}>
+                {priorityLabels[p]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Table */}
@@ -362,6 +398,7 @@ export default function ServiceBacklinksPage() {
               <TableHead className="text-center">Total Account</TableHead>
               <TableHead className="text-center">Result</TableHead>
               <TableHead className="text-center">Id Tool</TableHead>
+              <TableHead className="text-center">Priority</TableHead>
               <TableHead className="text-center">Status</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
@@ -438,8 +475,8 @@ export default function ServiceBacklinksPage() {
                   <TableCell className="text-center">
                     {(() => {
                       const target = getTargetFromRequest(req);
-                      const completed = req.completedLinks + req.failedLinks;
-                      const progress = target > 0 ? Math.min(100, (completed / target) * 100) : 0;
+                      const profileCount = req.profileCount ?? 0;
+                      const progress = target > 0 ? Math.min(100, (profileCount / target) * 100) : 0;
                       return (
                         <div className="flex flex-col items-center gap-1">
                           <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
@@ -449,10 +486,7 @@ export default function ServiceBacklinksPage() {
                             />
                           </div>
                           <span className="text-xs text-muted-foreground">
-                            <span className="text-green-600">{req.completedLinks}</span>
-                            {req.failedLinks > 0 && (
-                              <span className="text-red-600">/{req.failedLinks}</span>
-                            )}
+                            <span className="text-green-600">{profileCount}</span>
                             <span>/{target}</span>
                           </span>
                         </div>
@@ -463,6 +497,13 @@ export default function ServiceBacklinksPage() {
                   {/* Id Tool */}
                   <TableCell className="text-center text-sm font-mono text-muted-foreground">
                     {req.idTool || '-'}
+                  </TableCell>
+
+                  {/* Priority */}
+                  <TableCell className="text-center">
+                    <Badge variant="secondary" className={priorityColors[req.priority]}>
+                      {priorityLabels[req.priority]}
+                    </Badge>
                   </TableCell>
 
                   {/* Status */}
@@ -566,6 +607,12 @@ export default function ServiceBacklinksPage() {
                   <p className="text-sm text-muted-foreground">Service Type</p>
                   <Badge variant="secondary" className={serviceTypeColors[selectedRequest.serviceType]}>
                     {serviceTypeLabels[selectedRequest.serviceType]}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Priority</p>
+                  <Badge variant="secondary" className={priorityColors[selectedRequest.priority]}>
+                    {priorityLabels[selectedRequest.priority]}
                   </Badge>
                 </div>
                 <div>
@@ -722,7 +769,9 @@ export default function ServiceBacklinksPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="qu-target">Target</Label>
+                <Label htmlFor="qu-target">
+                  Target{selectedRequest?.config?.fixedSites ? ' (fixed)' : ''}
+                </Label>
                 <Input
                   id="qu-target"
                   value={quickUpdateForm.target}
@@ -730,6 +779,8 @@ export default function ServiceBacklinksPage() {
                     setQuickUpdateForm((prev) => ({ ...prev, target: e.target.value }))
                   }
                   placeholder="Enter target"
+                  disabled={!!selectedRequest?.config?.fixedSites}
+                  className={selectedRequest?.config?.fixedSites ? 'bg-muted' : ''}
                 />
               </div>
               <div className="space-y-2">

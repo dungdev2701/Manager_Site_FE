@@ -75,6 +75,23 @@ const singleWebsiteSchema = z.object({
 const bulkWebsiteSchema = z.object({
   domains: z.string().min(1, 'At least one domain is required'),
   types: z.array(z.enum(['ENTITY', 'BLOG2', 'PODCAST', 'SOCIAL', 'GG_STACKING', 'ENTITY_SOCIAL'])).optional(),
+  // Metrics fields (shared across all domains in bulk import)
+  traffic: z.string().optional(),
+  DA: z.string().optional(),
+  captcha_type: z.enum(['captcha', 'normal']).optional(),
+  captcha_provider: z.enum(['recaptcha', 'hcaptcha']).optional(),
+  cloudflare: z.enum(['yes', 'no']).optional(),
+  index: z.enum(['yes', 'no']).optional(),
+  username: z.enum(['unique', 'duplicate', 'no']).optional(),
+  email: z.enum(['multi', 'no_multi']).optional(),
+  required_gmail: z.enum(['yes', 'no']).optional(),
+  verify: z.enum(['yes', 'no']).optional(),
+  about: z.enum(['no_stacking', 'stacking_post', 'stacking_about', 'long_about']).optional(),
+  about_max_chars: z.string().optional(),
+  text_link: z.enum(['no', 'href', 'markdown', 'BBCode']).optional(),
+  social_connect: z.array(z.enum(['facebook', 'twitter', 'youtube', 'linkedin'])).optional(),
+  avatar: z.enum(['yes', 'no']).optional(),
+  cover: z.enum(['yes', 'no']).optional(),
 });
 
 type SingleWebsiteFormValues = z.infer<typeof singleWebsiteSchema>;
@@ -97,6 +114,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isParsingFile, setIsParsingFile] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
+  const [showBulkMetrics, setShowBulkMetrics] = useState(false);
   const [bulkWebsites, setBulkWebsites] = useState<BulkWebsiteItem[]>([]); // Store parsed websites with metrics
   const [isExcelWithMetrics, setIsExcelWithMetrics] = useState(false); // Track if Excel has metrics columns
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -117,6 +135,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
     defaultValues: {
       domains: '',
       types: [],
+      social_connect: [],
     },
   });
 
@@ -163,6 +182,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
       setUploadedFile(null);
       setBulkWebsites([]);
       setIsExcelWithMetrics(false);
+      setShowBulkMetrics(false);
       onOpenChange(false);
     },
     onError: (error: Error) => {
@@ -180,7 +200,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
         messages.push(`${result.created} websites created`);
       }
       if (result.updated > 0) {
-        messages.push(`${result.updated} websites updated (types merged)`);
+        messages.push(`${result.updated} websites updated (types/metrics merged)`);
       }
       if (result.duplicates.length > 0) {
         messages.push(`${result.duplicates.length} duplicates skipped`);
@@ -199,6 +219,7 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
       setUploadedFile(null);
       setBulkWebsites([]);
       setIsExcelWithMetrics(false);
+      setShowBulkMetrics(false);
       onOpenChange(false);
     },
     onError: (error: Error) => {
@@ -633,8 +654,48 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
     });
   };
 
+  const buildBulkMetrics = (data: BulkWebsiteFormValues): WebsiteMetrics | undefined => {
+    const metrics: WebsiteMetrics = {};
+
+    if (data.traffic) {
+      const trafficNum = parseInt(data.traffic, 10);
+      if (!isNaN(trafficNum) && trafficNum >= 0) metrics.traffic = trafficNum;
+    }
+    if (data.DA) {
+      const daNum = parseInt(data.DA, 10);
+      if (!isNaN(daNum) && daNum >= 0 && daNum <= 100) metrics.DA = daNum;
+    }
+    if (data.captcha_type) {
+      metrics.captcha_type = data.captcha_type;
+      if (data.captcha_type === 'captcha' && data.captcha_provider) {
+        metrics.captcha_provider = data.captcha_provider;
+      }
+      if (data.cloudflare) {
+        metrics.cloudflare = data.cloudflare === 'yes';
+      }
+    }
+    if (data.index) metrics.index = data.index;
+    if (data.username) metrics.username = data.username;
+    if (data.email) metrics.email = data.email;
+    if (data.required_gmail) metrics.required_gmail = data.required_gmail;
+    if (data.verify) metrics.verify = data.verify;
+    if (data.about) metrics.about = data.about;
+    if (data.about_max_chars) {
+      const maxCharsNum = parseInt(data.about_max_chars, 10);
+      if (!isNaN(maxCharsNum) && maxCharsNum > 0) metrics.about_max_chars = maxCharsNum;
+    }
+    if (data.text_link) metrics.text_link = data.text_link;
+    if (data.social_connect && data.social_connect.length > 0)
+      metrics.social_connect = data.social_connect;
+    if (data.avatar) metrics.avatar = data.avatar;
+    if (data.cover) metrics.cover = data.cover;
+
+    return Object.keys(metrics).length > 0 ? metrics : undefined;
+  };
+
   const onBulkSubmit = (data: BulkWebsiteFormValues) => {
     const types = data.types && data.types.length > 0 ? data.types as WebsiteType[] : undefined;
+    const sharedMetrics = buildBulkMetrics(data);
 
     // If we have parsed websites with metrics from Excel, use the new API
     if (isExcelWithMetrics && bulkWebsites.length > 0) {
@@ -642,16 +703,20 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
         toast.error('Maximum 1000 websites allowed');
         return;
       }
-      // Add types to each website item
+      // Add types and merge shared metrics to each website item
       const websitesWithTypes = bulkWebsites.map(w => ({
         ...w,
         types: types || w.types,
+        // Merge: shared metrics as base, Excel metrics override
+        metrics: sharedMetrics || w.metrics
+          ? { ...sharedMetrics, ...w.metrics }
+          : undefined,
       }));
       createBulkWithMetricsMutation.mutate(websitesWithTypes);
       return;
     }
 
-    // Otherwise, use the simple bulk create API
+    // Parse domains from text
     const domains = data.domains
       .split('\n')
       .map((d) => d.trim())
@@ -667,6 +732,18 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
       return;
     }
 
+    // If metrics are provided, use bulkCreateWithMetrics API
+    if (sharedMetrics) {
+      const websitesWithMetrics: BulkWebsiteItem[] = domains.map(domain => ({
+        domain,
+        types,
+        metrics: sharedMetrics,
+      }));
+      createBulkWithMetricsMutation.mutate(websitesWithMetrics);
+      return;
+    }
+
+    // Otherwise, use the simple bulk create API
     createBulkMutation.mutate({ domains, types });
   };
 
@@ -1326,6 +1403,461 @@ export function AddWebsiteDialog({ open, onOpenChange }: AddWebsiteDialogProps) 
                     </FormItem>
                   )}
                 />
+
+                {/* Collapsible Metrics Section for Bulk Import */}
+                <div className="border rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkMetrics(!showBulkMetrics)}
+                    className="flex items-center justify-between w-full p-3 text-sm font-medium hover:bg-muted/50 rounded-lg"
+                  >
+                    <span>Metrics (Optional - applies to all domains)</span>
+                    {showBulkMetrics ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+
+                  {showBulkMetrics && (
+                    <div className="p-4 pt-0 space-y-4">
+                      {isExcelWithMetrics && (
+                        <p className="text-xs text-amber-600">
+                          Note: These metrics will be used as defaults. Excel metrics will override for individual domains.
+                        </p>
+                      )}
+
+                      {/* Row 1: Traffic & DA */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={bulkForm.control}
+                          name="traffic"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Traffic</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  placeholder="e.g. 5000"
+                                  {...field}
+                                  value={field.value || ''}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={bulkForm.control}
+                          name="DA"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>DA (0-100)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  placeholder="e.g. 25"
+                                  {...field}
+                                  value={field.value || ''}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Row 2: Captcha Type & Conditional Fields */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={bulkForm.control}
+                          name="captcha_type"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Captcha Type</FormLabel>
+                              <Select
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  if (value === 'normal') {
+                                    bulkForm.setValue('captcha_provider', undefined);
+                                  }
+                                }}
+                                value={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="normal">Normal</SelectItem>
+                                  <SelectItem value="captcha">Captcha</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {bulkForm.watch('captcha_type') === 'captcha' && (
+                          <FormField
+                            control={bulkForm.control}
+                            name="captcha_provider"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Captcha Provider</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select..." />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="recaptcha">ReCaptcha</SelectItem>
+                                    <SelectItem value="hcaptcha">hCaptcha</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        )}
+
+                        {!bulkForm.watch('captcha_type') && (
+                          <FormField
+                            control={bulkForm.control}
+                            name="index"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Index</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select..." />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="yes">Yes</SelectItem>
+                                    <SelectItem value="no">No</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        )}
+                      </div>
+
+                      {/* Cloudflare */}
+                      {bulkForm.watch('captcha_type') && (
+                        <FormField
+                          control={bulkForm.control}
+                          name="cloudflare"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Cloudflare</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="yes">Yes</SelectItem>
+                                  <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+
+                      {/* Index & Email */}
+                      <div className="grid grid-cols-2 gap-4">
+                        {bulkForm.watch('captcha_type') && (
+                          <FormField
+                            control={bulkForm.control}
+                            name="index"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Index</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger className="w-full">
+                                      <SelectValue placeholder="Select..." />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="yes">Yes</SelectItem>
+                                    <SelectItem value="no">No</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        )}
+
+                        <FormField
+                          control={bulkForm.control}
+                          name="email"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Email</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="multi">Multi</SelectItem>
+                                  <SelectItem value="no_multi">No Multi</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Username & Required Gmail */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={bulkForm.control}
+                          name="username"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Username</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="unique">Unique</SelectItem>
+                                  <SelectItem value="duplicate">Duplicate</SelectItem>
+                                  <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={bulkForm.control}
+                          name="required_gmail"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Required Gmail</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="yes">Yes</SelectItem>
+                                  <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Verify */}
+                      <FormField
+                        control={bulkForm.control}
+                        name="verify"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Verify</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Select..." />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="yes">Yes</SelectItem>
+                                <SelectItem value="no">No</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* About & Max Chars */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={bulkForm.control}
+                          name="about"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>About</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="no_stacking">No Stacking</SelectItem>
+                                  <SelectItem value="stacking_post">Stacking Post</SelectItem>
+                                  <SelectItem value="stacking_about">Stacking About</SelectItem>
+                                  <SelectItem value="long_about">Long About</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={bulkForm.control}
+                          name="about_max_chars"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Max Characters</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  placeholder="e.g. 500"
+                                  {...field}
+                                  value={field.value || ''}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Text Link */}
+                      <FormField
+                        control={bulkForm.control}
+                        name="text_link"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Text Link</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Select..." />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="no">No</SelectItem>
+                                <SelectItem value="href">Href</SelectItem>
+                                <SelectItem value="markdown">Markdown</SelectItem>
+                                <SelectItem value="BBCode">BBCode</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Social Connect */}
+                      <FormField
+                        control={bulkForm.control}
+                        name="social_connect"
+                        render={() => (
+                          <FormItem>
+                            <FormLabel>Social Connect</FormLabel>
+                            <div className="flex flex-wrap gap-4">
+                              {SOCIAL_OPTIONS.map((option) => (
+                                <div key={option.value} className="flex items-center space-x-2">
+                                  <Checkbox
+                                    id={`bulk-${option.value}`}
+                                    checked={(bulkForm.watch('social_connect') || []).includes(option.value)}
+                                    onCheckedChange={(checked) => {
+                                      const current = bulkForm.getValues('social_connect') || [];
+                                      if (checked) {
+                                        bulkForm.setValue('social_connect', [
+                                          ...current,
+                                          option.value,
+                                        ]);
+                                      } else {
+                                        bulkForm.setValue(
+                                          'social_connect',
+                                          current.filter((v) => v !== option.value)
+                                        );
+                                      }
+                                    }}
+                                  />
+                                  <label
+                                    htmlFor={`bulk-${option.value}`}
+                                    className="text-sm font-medium leading-none cursor-pointer"
+                                  >
+                                    {option.label}
+                                  </label>
+                                </div>
+                              ))}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Avatar & Cover */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={bulkForm.control}
+                          name="avatar"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Avatar</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="yes">Yes</SelectItem>
+                                  <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={bulkForm.control}
+                          name="cover"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Cover</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="yes">Yes</SelectItem>
+                                  <SelectItem value="no">No</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
