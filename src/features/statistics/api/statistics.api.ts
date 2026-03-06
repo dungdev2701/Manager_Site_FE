@@ -37,9 +37,10 @@ import {
 // ============================================
 
 export const adminStatisticsApi = {
-  getOverview: async (): Promise<OverviewStats> => {
+  getOverview: async (params?: DateRangeParams): Promise<OverviewStats> => {
     const response = await apiClient.get<ApiSuccessResponse<OverviewStats>>(
-      '/statistics/overview'
+      '/statistics/overview',
+      { params }
     );
     return response.data.data;
   },

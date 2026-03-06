@@ -205,6 +205,8 @@ export function EditEmailDialog({ email, open, onOpenChange }: EditEmailDialogPr
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
+                      <SelectItem value={GmailStatus.NEW}>New</SelectItem>
+                      <SelectItem value={GmailStatus.RUNNING}>Running</SelectItem>
                       <SelectItem value={GmailStatus.SUCCESS}>Success</SelectItem>
                       <SelectItem value={GmailStatus.FAILED}>Failed</SelectItem>
                     </SelectContent>

@@ -257,6 +257,8 @@ export interface UpdateWebsiteRequest {
 
 // ==================== GMAIL ====================
 export enum GmailStatus {
+  NEW = 'NEW',
+  RUNNING = 'RUNNING',
   SUCCESS = 'SUCCESS',
   FAILED = 'FAILED',
 }
@@ -494,6 +496,8 @@ export enum RequestStatus {
   CONNECTING = 'CONNECTING',
   COMPLETED = 'COMPLETED',
   CANCEL = 'CANCEL',
+  RE_RUN = 'RE_RUN',
+  RE_RUNNING = 'RE_RUNNING',
 }
 
 export enum RequestPriority {

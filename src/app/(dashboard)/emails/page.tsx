@@ -78,7 +78,9 @@ import { AddEmailDialog } from '@/components/emails/add-email-dialog';
 import { EditEmailDialog } from '@/components/emails/edit-email-dialog';
 import { TwoFADialog } from '@/components/emails/twofa-dialog';
 
-const STATUS_BADGE_CLASSES = {
+const STATUS_BADGE_CLASSES: Record<GmailStatus, string> = {
+  NEW: 'bg-gray-100 text-gray-800 border-gray-200',
+  RUNNING: 'bg-blue-100 text-blue-800 border-blue-200',
   SUCCESS: 'bg-green-100 text-green-800 border-green-200',
   FAILED: 'bg-red-100 text-red-800 border-red-200',
 };
@@ -556,6 +558,8 @@ function EmailsPageContent() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">All Status</SelectItem>
+                    <SelectItem value={GmailStatus.NEW}>New</SelectItem>
+                    <SelectItem value={GmailStatus.RUNNING}>Running</SelectItem>
                     <SelectItem value={GmailStatus.SUCCESS}>Success</SelectItem>
                     <SelectItem value={GmailStatus.FAILED}>Failed</SelectItem>
                   </SelectContent>

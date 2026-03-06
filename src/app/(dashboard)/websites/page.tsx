@@ -62,6 +62,7 @@ import {
 } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import { AddWebsiteDialog } from '@/components/websites/add-website-dialog';
+import { CheckDomainsDialog } from '@/components/websites/check-domains-dialog';
 import { WebsiteDetailDialog } from '@/components/websites/website-detail-dialog';
 import { EditWebsiteDialog } from '@/components/websites/edit-website-dialog';
 import { PerformanceDialog } from '@/components/websites/performance-dialog';
@@ -297,6 +298,7 @@ function WebsitesPageContent() {
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState<number>(initialPageSize);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isCheckDomainsOpen, setIsCheckDomainsOpen] = useState(false);
   const [selectedWebsite, setSelectedWebsite] = useState<Website | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -305,6 +307,7 @@ function WebsitesPageContent() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSelectAllPages, setIsSelectAllPages] = useState(false); // Select all across all pages
+  const [checkDomainData, setCheckDomainData] = useState<Website[] | null>(null); // Matched websites from check domains
   const [isLoadingSelectAll, setIsLoadingSelectAll] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<ColumnId[]>(DEFAULT_VISIBLE_COLUMNS);
@@ -430,13 +433,22 @@ function WebsitesPageContent() {
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
-  const { data, isLoading, error } = useQuery({
+  // Normal mode: paginated list
+  const normalQuery = useQuery({
     queryKey: ['websites', user?.id, debouncedSearch, page, pageSize, filters],
     queryFn: () => websiteApi.getAll({ search: debouncedSearch, page, limit: pageSize, ...filters }),
-    enabled: !!user, // Only fetch when user is available
-    refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
-    refetchIntervalInBackground: false, // Only when tab is focused
+    enabled: !!user && !checkDomainData,
+    refetchInterval: 30 * 1000,
+    refetchIntervalInBackground: false,
   });
+
+  // Unified data depending on mode
+  const isCheckDomainsMode = !!checkDomainData;
+  const data = isCheckDomainsMode
+    ? { websites: checkDomainData, meta: { page: 1, limit: checkDomainData.length, total: checkDomainData.length, totalPages: 1 } }
+    : normalQuery.data;
+  const isLoading = isCheckDomainsMode ? false : normalQuery.isLoading;
+  const error = isCheckDomainsMode ? null : normalQuery.error;
 
   // Update URL when debounced search changes
   useEffect(() => {
@@ -483,6 +495,7 @@ function WebsitesPageContent() {
     mutationFn: websiteApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['websites'] });
+
       toast.success('Website moved to trash. It will be permanently deleted after 30 days.');
     },
     onError: () => {
@@ -496,8 +509,10 @@ function WebsitesPageContent() {
       websiteApi.bulkUpdateStatus(ids, status),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['websites'] });
+
       toast.success(`Updated ${variables.ids.length} websites to ${STATUS_LABELS[variables.status]}`);
-      clearSelection();
+      setSelectedIds(new Set());
+      setIsSelectAllPages(false);
     },
     onError: () => {
       toast.error('Failed to update status');
@@ -521,6 +536,7 @@ function WebsitesPageContent() {
       websiteApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['websites'] });
+
       toast.success('Updated successfully');
     },
     onError: () => {
@@ -1149,6 +1165,7 @@ function WebsitesPageContent() {
   const clearSelection = () => {
     setSelectedIds(new Set());
     setIsSelectAllPages(false);
+    setCheckDomainData(null);
   };
 
   // Helper function to format website for export
@@ -1321,13 +1338,37 @@ function WebsitesPageContent() {
           <h1 className="text-3xl font-bold tracking-tight">Websites</h1>
           <p className="text-muted-foreground">Manage and monitor your websites</p>
         </div>
-        <Button onClick={() => setIsAddDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Website
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsCheckDomainsOpen(true)}>
+            <Search className="mr-2 h-4 w-4" />
+            Check Domains
+          </Button>
+          <Button onClick={() => setIsAddDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Website
+          </Button>
+        </div>
       </div>
 
       <AddWebsiteDialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} />
+      <CheckDomainsDialog
+        open={isCheckDomainsOpen}
+        onOpenChange={setIsCheckDomainsOpen}
+        onMatchedFound={(matched) => {
+          const websites = matched.map((w) => ({
+            ...w,
+            types: w.types as WebsiteType[],
+            status: w.status as WebsiteStatus,
+            priority: 0,
+            tags: [],
+            createdAt: '',
+            updatedAt: '',
+          })) as Website[];
+          setCheckDomainData(websites);
+          setSelectedIds(new Set(matched.map((w) => w.id)));
+          setIsSelectAllPages(false);
+        }}
+      />
       <WebsiteDetailDialog
         website={selectedWebsite}
         open={isDetailDialogOpen}
@@ -1343,6 +1384,20 @@ function WebsitesPageContent() {
         open={isPerformanceDialogOpen}
         onOpenChange={setIsPerformanceDialogOpen}
       />
+
+      {/* Check domains mode banner */}
+      {isCheckDomainsMode && (
+        <div className="flex items-center gap-3 mb-4 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+          <Search className="h-4 w-4 text-blue-600 flex-shrink-0" />
+          <span className="text-sm text-blue-800">
+            Showing <strong>{checkDomainData?.length}</strong> matched domains from check.
+          </span>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={clearSelection}>
+            <X className="h-4 w-4 mr-1" />
+            Clear filter
+          </Button>
+        </div>
+      )}
 
       <div className="flex items-center gap-4 mb-4">
         <div className="relative flex-1 max-w-sm">

@@ -58,9 +58,9 @@ export function AdminStatistics() {
   } = useAdminStatistics({ startDate, endDate });
 
   return (
-    <div className="space-y-6">
+    <div className="h-[calc(100vh-56px-2rem)] lg:h-[calc(100vh-56px-3rem)] flex flex-col gap-4 overflow-hidden">
       {/* Sticky Header + Overview */}
-      <div className="sticky top-0 z-20 bg-muted -mx-4 lg:-mx-6 px-4 lg:px-6 pt-0 pb-4 space-y-4 shadow-sm">
+      <div className="shrink-0 space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -81,67 +81,71 @@ export function AdminStatistics() {
       </div>
 
       {/* Charts Section */}
-      <Tabs defaultValue="allocations" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="allocations" className="gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Allocations
-          </TabsTrigger>
-          <TabsTrigger value="status-changes" className="gap-2">
-            <Activity className="h-4 w-4" />
-            Biến động Websites
-          </TabsTrigger>
-          <TabsTrigger value="distribution" className="gap-2">
-            <PieChartIcon className="h-4 w-4" />
-            Phân bố
-          </TabsTrigger>
-          <TabsTrigger value="trends" className="gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Xu hướng
-          </TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="allocations" className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="rounded-md border bg-background p-2">
+          <TabsList>
+            <TabsTrigger value="allocations" className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Allocations
+            </TabsTrigger>
+            <TabsTrigger value="status-changes" className="gap-2">
+              <Activity className="h-4 w-4" />
+              Biến động Websites
+            </TabsTrigger>
+            <TabsTrigger value="distribution" className="gap-2">
+              <PieChartIcon className="h-4 w-4" />
+              Phân bố
+            </TabsTrigger>
+            <TabsTrigger value="trends" className="gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Xu hướng
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        {/* Allocations Tab */}
-        <TabsContent value="allocations">
-          <AllocationsTab
-            days={displayDays}
-            allocationStats={allocationStats}
-            topWebsites={topWebsites}
-            isLoading={{
-              allocations: isLoading.allocations,
-              topWebsites: isLoading.topWebsites,
-            }}
-          />
-        </TabsContent>
+        <div className="min-h-0 flex-1 rounded-md border overflow-auto scrollbar-thin bg-background p-4">
+          {/* Allocations Tab */}
+          <TabsContent value="allocations" className="overflow-hidden">
+            <AllocationsTab
+              days={displayDays}
+              allocationStats={allocationStats}
+              topWebsites={topWebsites}
+              isLoading={{
+                allocations: isLoading.allocations,
+                topWebsites: isLoading.topWebsites,
+              }}
+            />
+          </TabsContent>
 
-        {/* Status Changes Tab */}
-        <TabsContent value="status-changes">
-          <StatusChangesTab
-            days={displayDays}
-            statusChanges={statusChanges}
-            isLoading={isLoading.statusChanges}
-          />
-        </TabsContent>
+          {/* Status Changes Tab */}
+          <TabsContent value="status-changes" className="overflow-hidden">
+            <StatusChangesTab
+              days={displayDays}
+              statusChanges={statusChanges}
+              isLoading={isLoading.statusChanges}
+            />
+          </TabsContent>
 
-        {/* Distribution Tab */}
-        <TabsContent value="distribution">
-          <DistributionTab
-            statusStats={statusStats}
-            typeStats={typeStats}
-            loadingStatus={isLoading.status}
-            loadingType={isLoading.type}
-          />
-        </TabsContent>
+          {/* Distribution Tab */}
+          <TabsContent value="distribution" className="overflow-hidden">
+            <DistributionTab
+              statusStats={statusStats}
+              typeStats={typeStats}
+              loadingStatus={isLoading.status}
+              loadingType={isLoading.type}
+            />
+          </TabsContent>
 
-        {/* Trends Tab */}
-        <TabsContent value="trends">
-          <TrendsTab
-            trends={trends}
-            editorStats={editorStats}
-            loadingTrends={isLoading.trends}
-            loadingEditors={isLoading.editors}
-          />
-        </TabsContent>
+          {/* Trends Tab */}
+          <TabsContent value="trends" className="overflow-hidden">
+            <TrendsTab
+              trends={trends}
+              editorStats={editorStats}
+              loadingTrends={isLoading.trends}
+              loadingEditors={isLoading.editors}
+            />
+          </TabsContent>
+        </div>
       </Tabs>
     </div>
   );

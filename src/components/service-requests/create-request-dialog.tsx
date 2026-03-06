@@ -282,7 +282,7 @@ function FixedSitesField({ value, onChange, serviceType, onFiltered }: FixedSite
         const buffer = await file.arrayBuffer();
         const workbook = XLSX.read(buffer, { type: 'array' });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { header: 1 }) as unknown[][];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
         domains = rows
           .map((row) => String(row[0] ?? '').trim())
           .filter((d) => d.length > 0);
@@ -945,7 +945,7 @@ export function CreateRequestDialog({ open, onOpenChange }: CreateRequestDialogP
   });
 
   const watchedServiceType = form.watch('serviceType');
-  const watchedFixedSites: string = form.watch('config.fixedSites') ?? '';
+  const watchedFixedSites: string = String(form.watch('config.fixedSites') ?? '');
   const hasFixedSites = watchedServiceType === ServiceType.ENTITY &&
     watchedFixedSites.split(';').filter((d: string) => d.trim()).length > 0;
 

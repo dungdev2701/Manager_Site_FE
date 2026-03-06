@@ -75,7 +75,7 @@ export function AdminStatistics() {
   return (
     <div className="space-y-6">
       {/* Sticky Header + Overview */}
-      <div className="sticky top-0 z-20 bg-muted -mx-4 lg:-mx-6 px-4 lg:px-6 pt-0 pb-4 space-y-4 shadow-sm">
+      <div className="sticky top-14 z-20 isolate bg-muted -mx-4 lg:-mx-6 px-4 lg:px-6 pt-0 pb-4 space-y-4 shadow-sm">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -107,7 +107,7 @@ export function AdminStatistics() {
       </div>
 
       {/* Charts Section */}
-      <Tabs defaultValue="allocations" className="space-y-4">
+      <Tabs defaultValue="allocations" className="relative z-0 space-y-4">
         <TabsList>
           <TabsTrigger value="allocations" className="gap-2">
             <BarChart3 className="h-4 w-4" />

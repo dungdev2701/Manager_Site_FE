@@ -32,7 +32,7 @@ export function OverviewCards({ data, isLoading }: OverviewCardsProps) {
             <>
               <div className="text-2xl font-bold">{data?.totalWebsites.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">
-                +{data?.websitesThisWeek} tuần này
+                +{data?.websitesThisWeek} trong kỳ
               </p>
             </>
           )}

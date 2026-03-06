@@ -17,7 +17,8 @@ import { DateRangeParams } from '../types';
 // Query keys - centralize để dễ invalidate và manage cache
 export const adminStatisticsKeys = {
   all: ['statistics', 'admin'] as const,
-  overview: (userId?: string) => [...adminStatisticsKeys.all, 'overview', userId] as const,
+  overview: (params: DateRangeParams, userId?: string) =>
+    [...adminStatisticsKeys.all, 'overview', params, userId] as const,
   byStatus: (userId?: string) => [...adminStatisticsKeys.all, 'by-status', userId] as const,
   byType: (userId?: string) => [...adminStatisticsKeys.all, 'by-type', userId] as const,
   allocations: (params: DateRangeParams, userId?: string) => [...adminStatisticsKeys.all, 'allocations', params, userId] as const,
@@ -45,10 +46,10 @@ export function useAdminStatistics({ days, startDate, endDate }: UseAdminStatist
     ? { startDate, endDate }
     : { days: days || 30 };
 
-  // Overview - không phụ thuộc vào date range
+  // Overview - phụ thuộc vào date range để đồng nhất với các tab khác
   const overviewQuery = useQuery({
-    queryKey: adminStatisticsKeys.overview(userId),
-    queryFn: adminStatisticsApi.getOverview,
+    queryKey: adminStatisticsKeys.overview(dateParams, userId),
+    queryFn: () => adminStatisticsApi.getOverview(dateParams),
     enabled: !!user,
   });
 

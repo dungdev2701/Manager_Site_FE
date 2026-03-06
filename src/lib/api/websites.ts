@@ -151,6 +151,24 @@ export const websiteApi = {
     return response.data.data;
   },
 
+  // Check duplicates - compare domain list against entire system
+  checkDuplicates: async (
+    domains: string[]
+  ): Promise<{
+    total: number;
+    matched: Array<{ id: string; domain: string; status: string; types: string[] }>;
+    unmatchedDomains: string[];
+  }> => {
+    const response = await apiClient.post<
+      ApiSuccessResponse<{
+        total: number;
+        matched: Array<{ id: string; domain: string; status: string; types: string[] }>;
+        unmatchedDomains: string[];
+      }>
+    >('/websites/check-duplicates', { domains });
+    return response.data.data;
+  },
+
   // Filter domains against RUNNING websites
   filterDomains: async (
     domains: string[],

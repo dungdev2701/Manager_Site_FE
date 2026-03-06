@@ -82,6 +82,8 @@ const statusColors: Record<RequestStatus, string> = {
   [RequestStatus.CONNECTING]: 'bg-purple-100 text-purple-800',
   [RequestStatus.COMPLETED]: 'bg-green-100 text-green-800',
   [RequestStatus.CANCEL]: 'bg-red-100 text-red-800',
+  [RequestStatus.RE_RUN]: 'bg-orange-100 text-orange-800',
+  [RequestStatus.RE_RUNNING]: 'bg-amber-100 text-amber-800',
 };
 
 const priorityColors: Record<RequestPriority, string> = {
@@ -586,75 +588,75 @@ export default function ServiceBacklinksPage() {
 
       {/* Detail Dialog */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Service Request Details</DialogTitle>
           </DialogHeader>
           {selectedRequest && (
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <div className="grid grid-cols-2 gap-4">
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">ID</p>
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-sm select-all">{selectedRequest.id}</p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <p className="font-mono text-sm select-all truncate">{selectedRequest.id}</p>
                   </div>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">External ID</p>
-                  <p className="font-mono text-sm">{selectedRequest.externalId || '-'}</p>
+                  <p className="font-mono text-sm truncate">{selectedRequest.externalId || '-'}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Service Type</p>
                   <Badge variant="secondary" className={serviceTypeColors[selectedRequest.serviceType]}>
                     {serviceTypeLabels[selectedRequest.serviceType]}
                   </Badge>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Priority</p>
                   <Badge variant="secondary" className={priorityColors[selectedRequest.priority]}>
                     {priorityLabels[selectedRequest.priority]}
                   </Badge>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Status</p>
                   <Badge variant="secondary" className={statusColors[selectedRequest.status]}>
                     {selectedRequest.status}
                   </Badge>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Name</p>
-                  <p className="text-sm">{selectedRequest.name || '-'}</p>
+                  <p className="text-sm break-words">{selectedRequest.name || '-'}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Website</p>
-                  <p className="text-sm">{getWebsiteFromConfig(selectedRequest.config)}</p>
+                  <p className="text-sm break-all">{getWebsiteFromConfig(selectedRequest.config)}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Domains</p>
                   <p className="text-sm">{selectedRequest.domains}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Tool</p>
-                  <p className="font-mono text-sm">{selectedRequest.idTool || '-'}</p>
+                  <p className="font-mono text-sm break-all">{selectedRequest.idTool || '-'}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Price</p>
                   <p className="text-sm">{selectedRequest.auctionPrice ?? '-'}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">KH User</p>
-                  <p className="text-sm">
+                  <p className="text-sm break-words">
                     {selectedRequest.externalUserName || '-'}
                     {selectedRequest.externalUserEmail && (
                       <span className="text-muted-foreground"> ({selectedRequest.externalUserEmail})</span>
                     )}
                   </p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Assigned To</p>
                   <p className="text-sm">{selectedRequest.assignedUser?.name || '-'}</p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground">Run Count</p>
                   <p className="text-sm">{selectedRequest.runCount}</p>
                 </div>
@@ -693,9 +695,9 @@ export default function ServiceBacklinksPage() {
 
               {/* Config */}
               {selectedRequest.config && (
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm text-muted-foreground mb-2">Config</p>
-                  <pre className="bg-muted p-3 rounded-md text-xs overflow-x-auto">
+                  <pre className="bg-muted p-3 rounded-md text-xs whitespace-pre-wrap break-words max-w-full overflow-hidden">
                     {JSON.stringify(selectedRequest.config, null, 2)}
                   </pre>
                 </div>

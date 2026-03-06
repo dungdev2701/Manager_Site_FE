@@ -43,6 +43,21 @@ export interface CheckEmailAppPasswordResponse {
   canReceive?: boolean;
 }
 
+export interface BulkCreateGmailItem {
+  email: string;
+  password: string;
+  twoFA?: string;
+  recoveryEmail?: string;
+  status?: string;
+}
+
+export interface BulkCreateGmailResult {
+  created: number;
+  duplicates: string[];
+  invalid: string[];
+  total: number;
+}
+
 export const gmailApi = {
   getAll: async (query?: GmailQuery): Promise<GmailListResponse> => {
     const response = await apiClient.get<ApiSuccessResponse<GmailApiResponse>>(
@@ -146,6 +161,15 @@ export const gmailApi = {
         failed: number;
       };
     }>>('/gmails/check-emails', { ids });
+    return response.data.data;
+  },
+
+  // Bulk create gmails
+  bulkCreate: async (emails: BulkCreateGmailItem[]): Promise<BulkCreateGmailResult> => {
+    const response = await apiClient.post<ApiSuccessResponse<BulkCreateGmailResult>>(
+      '/gmails/create-bulk',
+      { emails }
+    );
     return response.data.data;
   },
 };
